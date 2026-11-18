@@ -407,7 +407,12 @@ def fake_eval(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Path
         "load_benign_prompts",
         lambda n, seed: prompt_set("benign", "benign", 4),
     )
-    return {"models": models, "out": tmp_path / "results"}
+    # A registry copy in tmp_path has no lock file next to it, so the committed lock (which
+    # pins the real file sizes) is never read. These tests must not depend on measured sizes.
+    config = tmp_path / "configs" / "variants.yaml"
+    config.parent.mkdir(parents=True, exist_ok=True)
+    config.write_text(CONFIG.read_text(encoding="utf-8"), encoding="utf-8")
+    return {"models": models, "out": tmp_path / "results", "config": config}
 
 
 def test_eval_end_to_end_then_resume_skips_finished_work(
@@ -416,7 +421,7 @@ def test_eval_end_to_end_then_resume_skips_finished_work(
     args = [
         "eval",
         "-c",
-        str(CONFIG),
+        str(fake_eval["config"]),
         "--policy",
         str(POLICY),
         "--only",
@@ -462,7 +467,7 @@ def test_eval_n_scale_is_recorded_in_env(fake_eval: dict[str, Path]) -> None:
     result = _invoke(
         "eval",
         "-c",
-        str(CONFIG),
+        str(fake_eval["config"]),
         "--policy",
         str(POLICY),
         "--only",
