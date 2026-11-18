@@ -254,6 +254,7 @@ def test_bandwidth_ceiling_check_exact_values() -> None:
 
 def _subprocess_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(perf.BACKEND_ENV, "test_perf:make_timed_fake")
+    monkeypatch.setenv(perf.TESTING_ENV, "1")
     existing = os.environ.get("PYTHONPATH", "")
     monkeypatch.setenv("PYTHONPATH", os.pathsep.join(p for p in (str(TESTS_DIR), existing) if p))
 
@@ -289,6 +290,7 @@ def test_entrypoint_json_uses_factory_and_hides_model_path(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.setenv(perf.BACKEND_ENV, "test_perf:make_timed_fake")
+    monkeypatch.setenv(perf.TESTING_ENV, "1")
     code = perf.main(
         [
             "--model",
@@ -312,12 +314,15 @@ def test_entrypoint_json_uses_factory_and_hides_model_path(
     assert payload["model_file"] == "m.gguf"
     assert "/secret" not in out
     assert payload["metrics"]["n_prompt_tokens_p50"] == 32
+    assert payload[perf.PEAK_RSS_KEY] > 0
+    assert perf.PEAK_RSS_KEY not in payload["metrics"]
 
 
 def test_entrypoint_bad_factory_spec_exits_2(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.setenv(perf.BACKEND_ENV, "no_colon_here")
+    monkeypatch.setenv(perf.TESTING_ENV, "1")
     assert perf.main(["--model", "x.gguf", "--json"]) == 2
     assert "module:callable" in capsys.readouterr().err
 
@@ -376,3 +381,63 @@ def test_bandwidth_script_requires_both_decode_flags() -> None:
         check=False,
     )
     assert proc.returncode == 2
+
+
+def test_factory_seam_is_ignored_without_testing_flag() -> None:
+    factory, note = perf._load_backend_factory({perf.BACKEND_ENV: "test_perf:make_timed_fake"})
+    assert factory is perf._default_factory
+    assert "ignored" in note and perf.TESTING_ENV in note
+
+
+def test_factory_seam_is_used_only_with_testing_flag() -> None:
+    factory, note = perf._load_backend_factory(
+        {perf.BACKEND_ENV: "test_perf:make_timed_fake", perf.TESTING_ENV: "1"}
+    )
+    assert factory.__name__ == "make_timed_fake"
+    assert "testing only" in note
+
+
+def test_default_factory_loads_without_logits(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, object] = {}
+
+    class _Spy:
+        def __init__(self, path: Path, **kwargs: object) -> None:
+            seen["path"] = path
+            seen.update(kwargs)
+
+    monkeypatch.setattr(perf, "LlamaCppBackend", _Spy)
+    perf._default_factory(Path("m.gguf"), 4)
+    assert seen["logits_all"] is False
+    assert seen["n_threads"] == 4
+    assert seen["n_ctx"] == perf.PERF_N_CTX
+
+
+def test_run_perf_subprocess_requires_rss_in_child_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stdout = json.dumps({"model_file": "m.gguf", "metrics": {"decode_tok_s_p50": 1.0}})
+
+    def _fake_run(*args: object, **kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(returncode=0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(perf.subprocess, "run", _fake_run)
+    with pytest.raises(RuntimeError, match="contract"):
+        run_perf_subprocess(Path("m.gguf"), _cfg(warmup=0, repeats=1))
+
+
+def test_run_perf_subprocess_adds_top_level_rss(monkeypatch: pytest.MonkeyPatch) -> None:
+    stdout = json.dumps(
+        {
+            "model_file": "m.gguf",
+            "metrics": {"decode_tok_s_p50": 2.0},
+            perf.PEAK_RSS_KEY: 123456.0,
+        }
+    )
+
+    def _fake_run(*args: object, **kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(returncode=0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(perf.subprocess, "run", _fake_run)
+    metrics = run_perf_subprocess(Path("m.gguf"), _cfg(warmup=0, repeats=1))
+    assert metrics[perf.PEAK_RSS_KEY] == 123456.0
+    assert metrics["decode_tok_s_p50"] == 2.0

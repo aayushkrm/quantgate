@@ -6,9 +6,16 @@ min-max over repeats. Peak RSS comes from resource.getrusage (ru_maxrss is bytes
 kilobytes on Linux). Power and thermal state (pmset -g batt, pmset -g therm) are recorded
 before and after each variant. On Linux the pmset fields are empty strings.
 
-The child uses LlamaCppBackend by default. For tests, the environment variable
-QUANTGATE_PERF_BACKEND can name an importable factory as ``module:callable``; the factory is
-called as ``factory(model_path, threads)`` and must return a Backend. The CLI never sets it.
+The child uses LlamaCppBackend by default, with logits_all=False: perf measures ordinary
+generation, and logits_all would add a full-vocabulary projection to every prefill token. For
+tests only, QUANTGATE_PERF_BACKEND can name an importable factory as ``module:callable``. The
+factory is called as ``factory(model_path, threads)`` and must return a Backend. That variable is
+honoured only when QUANTGATE_TESTING=1 is also set. Otherwise it is ignored with a warning, so a
+stray variable cannot replace the real backend in a measurement.
+
+The child's JSON has the contract ``{"model_file", "metrics", "peak_rss_bytes"}``. The parent
+returns the metrics dict with ``peak_rss_bytes`` added from the top-level key, and raises if the
+key is absent.
 
 Machine-state caveat: the numbers describe the machine they were measured on (CPU-only). They
 are not a claim about other hardware.
@@ -33,6 +40,9 @@ from quantgate.backend import LlamaCppBackend
 from quantgate.schema import Backend, GenResult, PerfConfig
 
 BACKEND_ENV = "QUANTGATE_PERF_BACKEND"
+TESTING_ENV = "QUANTGATE_TESTING"
+PEAK_RSS_KEY = "peak_rss_bytes"
+PERF_N_CTX = 1024  # covers prompt_tokens + gen_tokens with margin (512 + 128 by default)
 GB = 1e9  # decimal gigabytes, the STREAM convention
 
 BackendFactory = Callable[[Path, int], Backend]
@@ -246,20 +256,32 @@ def measure_in_process(backend: Backend, cfg: PerfConfig) -> dict[str, float]:
 
 
 def _default_factory(model_path: Path, threads: int) -> Backend:
-    """The production backend: LlamaCppBackend with the requested thread count."""
-    return LlamaCppBackend(model_path, n_threads=threads)
+    """The production backend: CPU LlamaCppBackend, no logits for every position."""
+    return LlamaCppBackend(
+        model_path,
+        n_ctx=PERF_N_CTX,
+        n_threads=threads,
+        logits_all=False,
+    )
 
 
-def _load_backend_factory() -> BackendFactory:
-    """The factory named by QUANTGATE_PERF_BACKEND (module:callable), else the llama default."""
-    spec = os.environ.get(BACKEND_ENV, "").strip()
+def _load_backend_factory(environ: dict[str, str] | None = None) -> tuple[BackendFactory, str]:
+    """The backend factory and a note saying whether the test seam was used or ignored.
+
+    QUANTGATE_PERF_BACKEND (module:callable) replaces the default only when QUANTGATE_TESTING=1.
+    Without the testing flag the variable is ignored, and the note says so.
+    """
+    env = dict(os.environ) if environ is None else environ
+    spec = env.get(BACKEND_ENV, "").strip()
     if not spec:
-        return _default_factory
+        return _default_factory, ""
+    if env.get(TESTING_ENV, "") != "1":
+        return _default_factory, f"{BACKEND_ENV} ignored: set {TESTING_ENV}=1 to use it"
     module_name, sep, attr = spec.partition(":")
     if not sep or not module_name or not attr:
         raise ValueError(f"{BACKEND_ENV} must look like module:callable, got {spec!r}")
     module = importlib.import_module(module_name)
-    return cast(BackendFactory, getattr(module, attr))
+    return cast(BackendFactory, getattr(module, attr)), f"{BACKEND_ENV} in use (testing only)"
 
 
 def run_perf_subprocess(
@@ -269,8 +291,8 @@ def run_perf_subprocess(
 ) -> dict[str, float]:
     """Run measure_in_process in a fresh Python subprocess for one GGUF file.
 
-    Returns the metrics dict of the child, plus peak_rss_bytes measured inside the child.
-    Raises RuntimeError on timeout or a non-zero exit.
+    Returns the child's metrics dict with ``peak_rss_bytes`` (measured inside the child) added.
+    Raises RuntimeError on timeout, a non-zero exit, unreadable output or a missing RSS value.
     """
     cmd = [
         sys.executable,
@@ -307,8 +329,14 @@ def run_perf_subprocess(
     lines = [line for line in proc.stdout.splitlines() if line.strip()]
     if not lines:
         raise RuntimeError("perf subprocess printed no JSON")
-    payload = json.loads(lines[-1])
-    return {str(k): float(v) for k, v in payload["metrics"].items()}
+    try:
+        payload = json.loads(lines[-1])
+        metrics = {str(k): float(v) for k, v in payload["metrics"].items()}
+        rss = float(payload[PEAK_RSS_KEY])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError(f"perf subprocess output does not match its contract: {exc}") from exc
+    metrics[PEAK_RSS_KEY] = rss
+    return metrics
 
 
 def measure_variant(
@@ -331,7 +359,7 @@ def measure_variant(
     before = summarize_power_state(power_state())
     metrics = run_perf_subprocess(model_path, cfg, timeout_s=timeout_s)
     after = summarize_power_state(power_state())
-    rss = int(metrics.pop("peak_rss_bytes", 0.0))
+    rss = int(metrics.pop(PEAK_RSS_KEY, 0.0))
     return PerfResult(
         model_file=model_path.name,
         config=cfg.model_dump(),
@@ -386,22 +414,25 @@ def main(argv: list[str] | None = None) -> int:
             repeats=args.repeats,
             threads=args.threads,
         )
-        factory = _load_backend_factory()
+        factory, note = _load_backend_factory()
+        if note:
+            print(f"quantgate.perf: note: {note}", file=sys.stderr)
         backend = factory(args.model, args.threads)
         try:
             metrics = measure_in_process(backend, cfg)
-            metrics["peak_rss_bytes"] = float(peak_rss_bytes())
         finally:
             backend.close()
+        rss = float(peak_rss_bytes())
     except Exception as exc:  # usage or runtime error: report on stderr, exit 2
         print(f"quantgate.perf: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2
-    payload = {"model_file": args.model.name, "metrics": metrics}
+    payload = {"model_file": args.model.name, "metrics": metrics, PEAK_RSS_KEY: rss}
     if args.json:
         print(json.dumps(payload, sort_keys=True))
     else:
         for key in sorted(metrics):
             print(f"{key}: {metrics[key]}")
+        print(f"{PEAK_RSS_KEY}: {rss}")
     return 0
 
 
