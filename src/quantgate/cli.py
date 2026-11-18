@@ -24,6 +24,7 @@ from quantgate.evals.kl import run_kl
 from quantgate.evals.mcq import McqItem, run_mcq
 from quantgate.evals.refusal import (
     PromptSet,
+    default_raw_path,
     load_benign_prompts,
     load_harmful_prompts,
     run_refusal,
@@ -150,6 +151,14 @@ def _collect_env() -> dict[str, Any]:
     if not isinstance(data, dict):
         raise CliError("environment record is not a JSON object")
     return data
+
+
+def _raw_dir(variant: str) -> Path:
+    """Local-only raw refusal completions for one variant, outside the repository (review Q8).
+
+    The directory is ~/.cache/quantgate/raw/<variant>/, as set by refusal.default_raw_path.
+    """
+    return default_raw_path(variant).parent
 
 
 def _registry_arg(path: Path | None) -> Path:
@@ -445,7 +454,7 @@ def _quality_phase(
             try:
                 ref_for_kl = ensure_ref() if "kl" in todo else None
                 for s in todo:
-                    raw_dir = out / v.name / "raw"
+                    raw_dir = _raw_dir(v.name)
                     metrics, extra = _run_suite(s, backend, ref_for_kl, cfg, cache, raw_dir)
                     _write_suite(out, v.name, s, metrics, extra)
                     ran.append(f"{v.name}/{s}")
@@ -508,7 +517,7 @@ def _assemble(
         variant = v
         if v.name in paths and v.file_bytes is None and paths[v.name].is_file():
             variant = v.model_copy(update={"file_bytes": paths[v.name].stat().st_size})
-        raw_dir = out / v.name / "raw"
+        raw_dir = _raw_dir(v.name)
         result = VariantResult(
             variant=variant,
             metrics=metrics,

@@ -531,3 +531,13 @@ def test_quality_backend_is_512_tokens_with_one_batch() -> None:
 
     assert cli_module.CTX_BACKEND == 512
     assert cli_module.CTX_BACKEND >= load_suite_config(CONFIG).kl.ctx + cli_module.KL_CTX_MARGIN
+
+
+def test_raw_completions_go_to_the_user_cache_not_the_repo() -> None:
+    """Q8: raw refusal completions sit under ~/.cache/quantgate/raw, outside the repository."""
+    from quantgate import cli as cli_module
+
+    raw = cli_module._raw_dir("q4_k_m")
+    assert raw == Path.home() / ".cache" / "quantgate" / "raw" / "q4_k_m"
+    assert "raw" in raw.parts
+    assert not str(raw.resolve()).startswith(str(REPO.resolve()))
