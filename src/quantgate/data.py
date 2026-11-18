@@ -22,9 +22,9 @@ from pathlib import Path
 from typing import Any
 
 from quantgate.evals.mcq import McqItem
+from quantgate.resources import subsets_dir
 
-REPO_ROOT: Path = Path(__file__).resolve().parents[2]
-SUBSETS_DIR: Path = REPO_ROOT / "data" / "subsets"
+SUBSETS_DIR: Path = subsets_dir()
 
 # Fixed seed for the committed selections. Changing it changes the committed IDs, so any change
 # goes in docs/deviations.md.

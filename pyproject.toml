@@ -41,6 +41,13 @@ Repository = "https://github.com/aayushkrm/quantgate"
 [tool.hatch.build.targets.wheel]
 packages = ["src/quantgate"]
 
+# Defaults the installed package needs at run time. In a checkout these files are read in place
+# (src/quantgate/resources.py); in a wheel they are bundled under quantgate/_data/.
+[tool.hatch.build.targets.wheel.force-include]
+"configs/gate.yaml" = "quantgate/_data/gate.yaml"
+"configs/variants.yaml" = "quantgate/_data/variants.yaml"
+"data/subsets" = "quantgate/_data/subsets"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [

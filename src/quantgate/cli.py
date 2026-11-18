@@ -8,8 +8,6 @@ danger), 2 = usage or runtime error. Errors print one clean line (or a JSON erro
 import json
 import math
 import shutil
-import subprocess
-import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -20,6 +18,7 @@ import yaml
 
 from quantgate.backend import FakeBackend, LlamaCppBackend
 from quantgate.data import load_arc_easy, load_gsm8k, load_wikitext_passages, select_subset
+from quantgate.envinfo import collect as collect_envinfo
 from quantgate.evals.gsm8k import run_gsm8k
 from quantgate.evals.kl import run_kl
 from quantgate.evals.mcq import McqItem, run_mcq
@@ -30,6 +29,9 @@ from quantgate.evals.refusal import (
     run_refusal,
 )
 from quantgate.gate import evaluate, gate_label, gate_report, load_policy, recommend
+from quantgate.models import (
+    LOCK_FILENAME as LOCK_NAME,
+)
 from quantgate.models import (
     Registry,
     apply_lock,
@@ -52,6 +54,7 @@ from quantgate.report import (
     write_report,
     write_site,
 )
+from quantgate.resources import config_path, is_bundled
 from quantgate.schema import (
     ArcConfig,
     Backend,
@@ -76,7 +79,9 @@ app = typer.Typer(
 JsonOption = Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON.")]
 
 SUITE_NAMES: tuple[str, ...] = ("kl", "arc", "gsm8k", "refusal", "perf")
-DEFAULT_POLICY = Path("configs/gate.yaml")
+# Defaults resolve to the bundled copy in an installed wheel, or the repo files in a checkout.
+DEFAULT_POLICY_NAME = "gate.yaml"
+DEFAULT_REGISTRY_NAME = "variants.yaml"
 MIB = 2**20
 _T = TypeVar("_T")
 CTX_BACKEND = 512  # quality suites: KL passages are 256 tokens; logits buffer is n_ctx x vocab
@@ -136,23 +141,34 @@ def _guard(json_out: bool) -> Iterator[None]:
 
 
 def _collect_env() -> dict[str, Any]:
-    """Environment record from scripts/envinfo.py (git SHA, CPU, RAM, packages). No host names."""
-    script = Path(__file__).resolve().parents[2] / "scripts" / "envinfo.py"
-    if not script.is_file():
-        raise CliError("scripts/envinfo.py not found; run from a repository checkout")
-    proc = subprocess.run(
-        [sys.executable, str(script)],
-        capture_output=True,
-        text=True,
-        timeout=120,
-        check=False,
-    )
-    if proc.returncode != 0:
-        raise CliError(f"envinfo failed: {proc.stderr.strip()[:300]}")
-    data = json.loads(proc.stdout)
+    """Environment record from quantgate.envinfo (git SHA of the working directory, CPU, RAM,
+    package versions). No host names or user names."""
+    try:
+        data = collect_envinfo(Path.cwd())
+    except Exception as exc:
+        raise CliError(f"environment record failed: {type(exc).__name__}: {exc}") from exc
     if not isinstance(data, dict):
-        raise CliError("envinfo did not print a JSON object")
+        raise CliError("environment record is not a JSON object")
     return data
+
+
+def _registry_arg(path: Path | None) -> Path:
+    """The variant registry: the path given, else the bundled or repo default."""
+    return config_path(DEFAULT_REGISTRY_NAME) if path is None else path
+
+
+def _policy_arg(path: Path | None) -> Path:
+    """The gate policy: the path given, else the bundled or repo default."""
+    return config_path(DEFAULT_POLICY_NAME) if path is None else path
+
+
+def _lock_default(registry: Path) -> Path:
+    """Where the lock file goes by default: next to the registry. For the bundled registry of an
+    installed package the package directory is read-only in spirit, so the lock goes to the
+    working directory's configs/ instead."""
+    if is_bundled(registry):
+        return Path.cwd() / "configs" / LOCK_NAME
+    return default_lock_path(registry)
 
 
 def load_suite_config(path: Path) -> SuiteConfig:
@@ -508,9 +524,9 @@ def _assemble(
 
 @app.command()
 def fetch(
-    config: Annotated[Path, typer.Option("--config", "-c", help="Variant registry YAML.")] = Path(
-        "configs/variants.yaml"
-    ),
+    config: Annotated[
+        Path | None, typer.Option("--config", "-c", help="Variant registry YAML.")
+    ] = None,
     models_dir: Annotated[
         Path, typer.Option("--models-dir", help="Where GGUF files are stored (outside the repo).")
     ] = Path("~/models"),
@@ -527,8 +543,9 @@ def fetch(
     The registry YAML itself is not rewritten, so its comments stay as they are.
     """
     with _guard(json_out):
+        config = _registry_arg(config)
         pairs = fetch_registry(config, models_dir.expanduser())
-        lock_path = default_lock_path(config) if lock is None else lock
+        lock_path = _lock_default(config) if lock is None else lock
         write_lock(lock_path, pairs)
         rows: list[dict[str, Any]] = []
         for variant, path in pairs:
@@ -557,9 +574,9 @@ def fetch(
 
 @app.command("eval")
 def eval_cmd(
-    config: Annotated[Path, typer.Option("--config", "-c", help="Variant registry YAML.")] = Path(
-        "configs/variants.yaml"
-    ),
+    config: Annotated[
+        Path | None, typer.Option("--config", "-c", help="Variant registry YAML.")
+    ] = None,
     suite: Annotated[
         str, typer.Option("--suite", help="Comma-separated subset of: kl,arc,gsm8k,refusal,perf.")
     ] = "kl,arc,gsm8k,refusal,perf",
@@ -577,9 +594,7 @@ def eval_cmd(
         float,
         typer.Option("--n-scale", help="Multiply every sample count by this (0 < x <= 1)."),
     ] = 1.0,
-    policy: Annotated[
-        Path, typer.Option("--policy", "-p", help="Gate policy YAML.")
-    ] = DEFAULT_POLICY,
+    policy: Annotated[Path | None, typer.Option("--policy", "-p", help="Gate policy YAML.")] = None,
     json_out: JsonOption = False,
 ) -> None:
     """Run the eval suite for every variant and write per-variant JSON under --out.
@@ -590,6 +605,8 @@ def eval_cmd(
     deviation.
     """
     with _guard(json_out):
+        config = _registry_arg(config)
+        policy = _policy_arg(policy)
         suites = _parse_suites(suite)
         if not 0.0 < n_scale <= 1.0:
             raise CliError("--n-scale must be greater than 0 and at most 1")
@@ -599,7 +616,7 @@ def eval_cmd(
         gate_policy: GatePolicy = load_policy(policy)
         variants = _select_variants(registry, only)
 
-        lock_entries = read_lock(default_lock_path(config))
+        lock_entries = read_lock(_lock_default(config))
         variants = [apply_lock(v, lock_entries) for v in variants]
 
         models = models_dir.expanduser()
@@ -672,9 +689,7 @@ def _report_path(path: Path) -> Path:
 @app.command()
 def gate(
     report: Annotated[Path, typer.Argument(help="Path to a QuantReport JSON.")],
-    policy: Annotated[
-        Path, typer.Option("--policy", "-p", help="Gate policy YAML.")
-    ] = DEFAULT_POLICY,
+    policy: Annotated[Path | None, typer.Option("--policy", "-p", help="Gate policy YAML.")] = None,
     json_out: JsonOption = False,
 ) -> None:
     """Apply the gate policy to a report. Exit 0 if every variant passes, 1 otherwise.
@@ -684,7 +699,7 @@ def gate(
     """
     with _guard(json_out):
         rep: QuantReport = load_report(_report_path(report))
-        pol = load_policy(policy)
+        pol = load_policy(_policy_arg(policy))
         decisions = gate_report(rep, pol)
         if not decisions:
             raise CliError("the report has no candidate variants to gate")
@@ -830,7 +845,8 @@ def demo(
             raise CliError(
                 "demo cannot run yet: a module it needs is not implemented (NotImplementedError)"
             ) from exc
-        policy = load_policy(DEFAULT_POLICY)
+        policy_path = _policy_arg(None)
+        policy = load_policy(policy_path)
         reference = DEMO_LADDER[0][0]
         decisions = evaluate(results, reference, policy)
         recommended = recommend(decisions, results)
@@ -840,7 +856,7 @@ def demo(
             "run": {
                 "sizes": "tiny, scripted FakeBackend, no model files",
                 "suites": list(SUITE_NAMES),
-                "policy": _portable(DEFAULT_POLICY),
+                "policy": "bundled default" if is_bundled(policy_path) else _portable(policy_path),
             },
         }
         rep = build_report(
