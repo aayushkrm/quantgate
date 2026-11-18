@@ -29,8 +29,18 @@ from quantgate.evals.refusal import (
     load_harmful_prompts,
     run_refusal,
 )
-from quantgate.gate import evaluate, gate_report, load_policy, recommend
-from quantgate.models import Registry, fetch_registry, load_registry, sha256_file, verify_variant
+from quantgate.gate import evaluate, gate_label, gate_report, load_policy, recommend
+from quantgate.models import (
+    Registry,
+    apply_lock,
+    default_lock_path,
+    fetch_registry,
+    load_registry,
+    read_lock,
+    sha256_file,
+    verify_variant,
+    write_lock,
+)
 from quantgate.perf import measure_in_process, run_perf_subprocess
 from quantgate.plots import write_report_plots
 from quantgate.report import (
@@ -69,7 +79,8 @@ SUITE_NAMES: tuple[str, ...] = ("kl", "arc", "gsm8k", "refusal", "perf")
 DEFAULT_POLICY = Path("configs/gate.yaml")
 MIB = 2**20
 _T = TypeVar("_T")
-CTX_BACKEND = 2048
+CTX_BACKEND = 512  # quality suites: KL passages are 256 tokens; logits buffer is n_ctx x vocab
+KL_CTX_MARGIN = 128  # tokens of headroom required above kl.ctx in the quality backend
 PERF_TIMEOUT_S = 600.0
 
 
@@ -242,8 +253,24 @@ def _write_suite(
 
 
 def _load_backend(path: Path, cfg: SuiteConfig) -> Backend:
-    """Load one GGUF file with the llama.cpp backend, CPU only, threads from the perf settings."""
-    return LlamaCppBackend(path, n_ctx=CTX_BACKEND, n_threads=cfg.perf.threads, seed=cfg.seed)
+    """Load one GGUF file for the quality suites: CPU only, logits for every position.
+
+    n_ctx is CTX_BACKEND (512) and n_batch equals n_ctx, so each KL passage is evaluated as one
+    batch of its own length. Raises CliError if the KL passages would not fit.
+    """
+    if cfg.kl.ctx + KL_CTX_MARGIN > CTX_BACKEND:
+        raise CliError(
+            f"kl.ctx={cfg.kl.ctx} needs n_ctx >= {cfg.kl.ctx + KL_CTX_MARGIN}; "
+            f"the quality backend has n_ctx={CTX_BACKEND}"
+        )
+    return LlamaCppBackend(
+        path,
+        n_ctx=CTX_BACKEND,
+        n_threads=cfg.perf.threads,
+        seed=cfg.seed,
+        logits_all=True,
+        n_batch=CTX_BACKEND,
+    )
 
 
 def _take(items: list[_T], n: int, seed: int) -> list[_T]:
@@ -439,10 +466,16 @@ def _assemble(
     paths: dict[str, Path],
     suites: list[str],
     out: Path,
+    pinned: dict[str, Variant] | None = None,
 ) -> list[VariantResult]:
-    """Build one VariantResult per variant with any finished suite file, and write variant.json."""
+    """Build one VariantResult per variant with any finished suite file, and write variant.json.
+
+    pinned maps variant names to registry entries with lock values filled in; those are used
+    in place of the registry entries.
+    """
     results: list[VariantResult] = []
-    for v in registry.variants:
+    for registry_variant in registry.variants:
+        v = (pinned or {}).get(registry_variant.name, registry_variant)
         metrics: dict[str, MetricValue] = {}
         found = False
         for s in suites:
@@ -481,15 +514,22 @@ def fetch(
     models_dir: Annotated[
         Path, typer.Option("--models-dir", help="Where GGUF files are stored (outside the repo).")
     ] = Path("~/models"),
+    lock: Annotated[
+        Path | None,
+        typer.Option("--lock", help="Lock file to write (default: next to the registry)."),
+    ] = None,
     json_out: JsonOption = False,
 ) -> None:
     """Download every variant in the registry and verify sha256 and size.
 
-    Variants whose registry sha256 is null get the observed hash printed, to paste into the
-    registry. The registry itself is not rewritten.
+    The observed sha256 and size of every file are written to a sidecar lock file (by default
+    configs/variants.lock.json). `eval` verifies against the lock when the registry pin is null.
+    The registry YAML itself is not rewritten, so its comments stay as they are.
     """
     with _guard(json_out):
         pairs = fetch_registry(config, models_dir.expanduser())
+        lock_path = default_lock_path(config) if lock is None else lock
+        write_lock(lock_path, pairs)
         rows: list[dict[str, Any]] = []
         for variant, path in pairs:
             observed = sha256_file(path) if variant.sha256 is None else None
@@ -511,7 +551,8 @@ def fetch(
             )
             for r in rows
         )
-        _emit(json_out, {"ok": True, "variants": rows}, text)
+        text += f"\nWrote lock file {_portable(lock_path)}."
+        _emit(json_out, {"ok": True, "variants": rows, "lock": _portable(lock_path)}, text)
 
 
 @app.command("eval")
@@ -558,6 +599,9 @@ def eval_cmd(
         gate_policy: GatePolicy = load_policy(policy)
         variants = _select_variants(registry, only)
 
+        lock_entries = read_lock(default_lock_path(config))
+        variants = [apply_lock(v, lock_entries) for v in variants]
+
         models = models_dir.expanduser()
         paths: dict[str, Path] = {}
         for v in variants:
@@ -565,8 +609,11 @@ def eval_cmd(
             if not path.is_file():
                 raise CliError(f"missing model file for {v.name}; run `quantgate fetch` first")
             paths[v.name] = path
+        unverified: dict[str, list[str]] = {}
         for v in variants:
-            verify_variant(v, paths[v.name])
+            skipped_checks = verify_variant(v, paths[v.name])
+            if skipped_checks:
+                unverified[v.name] = skipped_checks
 
         out.mkdir(parents=True, exist_ok=True)
         env_info = _collect_env()
@@ -576,6 +623,7 @@ def eval_cmd(
             "suites": suites,
             "variants": [v.name for v in variants],
             "policy": _portable(policy),
+            "unverified": unverified,
         }
         (out / "env.json").write_text(json.dumps(env_info, indent=2, sort_keys=True) + "\n")
 
@@ -585,7 +633,7 @@ def eval_cmd(
         if "perf" in suites:
             _perf_phase(variants, paths, cfg, out, ran, skipped)
 
-        results = _assemble(registry, paths, suites, out)
+        results = _assemble(registry, paths, suites, out, pinned={v.name: v for v in variants})
         decisions = evaluate(results, registry.reference, gate_policy)
         recommended = recommend(decisions, results)
         report = build_report(
@@ -657,12 +705,11 @@ def gate(
             "exit_code": 0 if all_pass else 1,
         }
         width = max(len(d.variant) for d in decisions)
-        lines = [f"{'variant':<{width}}  verdict  hidden  failed rules"]
+        lines = [f"{'variant':<{width}}  gate                        hidden  failed rules"]
         for d in decisions:
-            verdict = "PASS" if d.passed else "FAIL"
             failed = ", ".join(d.failed_rules) if d.failed_rules else "-"
             danger = "YES" if d.hidden_danger else "no"
-            lines.append(f"{d.variant:<{width}}  {verdict:<7}  {danger:<6}  {failed}")
+            lines.append(f"{d.variant:<{width}}  {gate_label(d):<28}  {danger:<6}  {failed}")
         lines.append(f"Recommended: {recommended or 'none'}")
         if stored != fresh:
             lines.append("Note: the stored decisions differ from this policy's decisions.")

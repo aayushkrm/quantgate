@@ -379,3 +379,75 @@ def test_ensure_ladder_needs_the_reference_from_the_hub(
     FakeHub({}).install(monkeypatch)
     with pytest.raises(EntryNotFoundError):
         ensure_ladder(_write_registry(tmp_path), tmp_path / "models")
+
+
+# --- sidecar lock file (configs/variants.lock.json) ---------------------------------------------
+
+
+def _pinned(name: str, filename: str, data: bytes, tmp_path: Path) -> tuple[Variant, Path]:
+    path = tmp_path / "models" / "repo" / filename
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+    variant = Variant(
+        name=name,
+        repo_id="org/repo",
+        filename=filename,
+        sha256=sha256_file(path),
+        file_bytes=path.stat().st_size,
+    )
+    return variant, path
+
+
+def test_lock_round_trip_and_apply_fills_null_pins(tmp_path: Path) -> None:
+    from quantgate.models import apply_lock, read_lock, write_lock
+
+    filled, path = _pinned("q4_k_m", "q4.gguf", b"abc", tmp_path)
+    lock_file = write_lock(tmp_path / "variants.lock.json", [(filled, path)])
+    text = lock_file.read_text(encoding="utf-8")
+    assert str(tmp_path) not in text, "the lock file must not contain local paths"
+
+    entries = read_lock(lock_file)
+    assert entries["q4_k_m"]["sha256"] == filled.sha256
+    blank = Variant(name="q4_k_m", repo_id="org/repo", filename="q4.gguf")
+    applied = apply_lock(blank, entries)
+    assert applied.sha256 == filled.sha256
+    assert applied.file_bytes == filled.file_bytes
+
+
+def test_apply_lock_never_overwrites_registry_pins(tmp_path: Path) -> None:
+    from quantgate.models import apply_lock
+
+    pinned = Variant(name="x", repo_id="org/repo", filename="x.gguf", sha256="a" * 64)
+    entries = {
+        "x": {"repo_id": "org/repo", "filename": "x.gguf", "sha256": "b" * 64, "file_bytes": 3}
+    }
+    applied = apply_lock(pinned, entries)
+    assert applied.sha256 == "a" * 64
+    assert applied.file_bytes == 3
+
+
+def test_apply_lock_rejects_entry_for_another_file() -> None:
+    from quantgate.models import apply_lock
+
+    blank = Variant(name="x", repo_id="org/repo", filename="x.gguf")
+    entries = {
+        "x": {"repo_id": "org/other", "filename": "x.gguf", "sha256": "c" * 64, "file_bytes": 3}
+    }
+    with pytest.raises(ValueError, match="another file"):
+        apply_lock(blank, entries)
+
+
+def test_read_lock_missing_file_is_empty_and_bad_schema_is_refused(tmp_path: Path) -> None:
+    from quantgate.models import read_lock
+
+    assert read_lock(tmp_path / "absent.json") == {}
+    bad = tmp_path / "bad.json"
+    bad.write_text('{"schema_version": "9", "variants": {}}', encoding="utf-8")
+    with pytest.raises(ValueError, match="lock file"):
+        read_lock(bad)
+
+
+def test_default_lock_path_sits_next_to_registry() -> None:
+    from quantgate.models import default_lock_path
+
+    assert default_lock_path(Path("configs/variants.yaml")) == Path("configs/variants.lock.json")

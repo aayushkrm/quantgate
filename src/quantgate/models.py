@@ -12,6 +12,7 @@ import hashlib
 import json
 import logging
 import os
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -198,6 +199,87 @@ def fetch_variant(variant: Variant, models_dir: Path) -> tuple[Variant, Path]:
         raise ValueError(f"{variant.name}: sha256 {digest} != pinned {variant.sha256} ({path})")
     filled = variant.model_copy(update={"sha256": digest, "file_bytes": size})
     return filled, path
+
+
+LOCK_SCHEMA_VERSION = "1"
+LOCK_FILENAME = "variants.lock.json"
+
+
+def default_lock_path(registry_path: Path) -> Path:
+    """Sidecar lock file next to the registry: configs/variants.lock.json for the default."""
+    return Path(registry_path).with_name(LOCK_FILENAME)
+
+
+def build_lock(pairs: Sequence[tuple[Variant, Path]]) -> dict[str, Any]:
+    """Lock record of observed sha256 and size per variant. Holds no local paths.
+
+    Each entry is keyed by variant name and also records repo_id and filename, so a lock entry
+    is applied only to the same file it was observed on.
+    """
+    entries: dict[str, Any] = {}
+    for variant, _path in pairs:
+        if variant.sha256 is None or variant.file_bytes is None:
+            raise ValueError(f"{variant.name}: cannot lock a variant without sha256 and size")
+        entries[variant.name] = {
+            "repo_id": variant.repo_id,
+            "filename": variant.filename,
+            "sha256": variant.sha256,
+            "file_bytes": variant.file_bytes,
+        }
+    return {
+        "schema_version": LOCK_SCHEMA_VERSION,
+        "note": (
+            "Written by `quantgate fetch`. Observed sha256 and size of each GGUF, checked against "
+            "the Hub. Used when configs/variants.yaml has null pins. Do not edit by hand."
+        ),
+        "variants": entries,
+    }
+
+
+def write_lock(path: Path, pairs: Sequence[tuple[Variant, Path]]) -> Path:
+    """Write the lock file for these fetched variants. Returns the path written."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(build_lock(pairs), indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    return path
+
+
+def read_lock(path: Path) -> dict[str, dict[str, Any]]:
+    """Entries of a lock file keyed by variant name. A missing file gives an empty dict.
+
+    Raises ValueError if the file exists but is not a lock file of the known schema.
+    """
+    path = Path(path)
+    if not path.is_file():
+        return {}
+    data: Any = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict) or data.get("schema_version") != LOCK_SCHEMA_VERSION:
+        raise ValueError(f"{path} is not a quantgate lock file of schema {LOCK_SCHEMA_VERSION}")
+    entries = data.get("variants")
+    if not isinstance(entries, dict):
+        raise ValueError(f"{path} has no 'variants' mapping")
+    return {str(k): dict(v) for k, v in entries.items()}
+
+
+def apply_lock(variant: Variant, lock: dict[str, dict[str, Any]]) -> Variant:
+    """The variant with sha256 and file_bytes filled from the lock where the registry has nulls.
+
+    A lock entry is used only when its repo_id and filename match the variant. Registry pins,
+    when present, are never overwritten. A mismatching lock entry raises ValueError.
+    """
+    entry = lock.get(variant.name)
+    if entry is None:
+        return variant
+    if entry.get("repo_id") != variant.repo_id or entry.get("filename") != variant.filename:
+        raise ValueError(f"lock entry for {variant.name} is for another file; re-run fetch")
+    update: dict[str, Any] = {}
+    if variant.sha256 is None:
+        update["sha256"] = entry.get("sha256")
+    if variant.file_bytes is None:
+        update["file_bytes"] = entry.get("file_bytes")
+    return variant.model_copy(update=update) if update else variant
 
 
 def fetch_registry(registry_path: Path, models_dir: Path) -> list[tuple[Variant, Path]]:

@@ -58,18 +58,26 @@ class LlamaCppBackend:
     def __init__(
         self,
         model_path: Path,
-        n_ctx: int = 2048,
+        n_ctx: int = 512,
         n_threads: int = 4,
         seed: int = 0,
         type_k: int | None = None,
         type_v: int | None = None,
         logits_all: bool = True,
         flash_attn: bool = False,
+        n_batch: int | None = None,
     ) -> None:
         """Load the model. type_k and type_v are ggml type ints (E5 KV-cache study only).
 
         logits_all must be True for logprobs and score_continuations. generate works either
         way. flash_attn is only needed for some quantized V-cache types.
+
+        n_batch defaults to n_ctx, so any input up to n_ctx is evaluated as one batch. The batch
+        shape then depends only on the input length, which keeps reference and candidate
+        comparable (Q-A measured about 1.3e-4 nats of noise from batch shape alone).
+        n_ctx defaults to 512: the KL passages are 256 tokens and the GSM8K prompt plus 256
+        generated tokens fits. A larger n_ctx costs n_ctx * n_vocab * 4 bytes of logits buffer
+        when logits_all=True (about 1.2 GB at 2048).
 
         Raises FileNotFoundError if the GGUF is missing and RuntimeError if llama-cpp-python
         is not installed (install the ``llama`` extra).
@@ -87,6 +95,7 @@ class LlamaCppBackend:
         self._llm: Any = Llama(
             model_path=str(path),
             n_ctx=n_ctx,
+            n_batch=n_ctx if n_batch is None else n_batch,
             n_threads=n_threads,
             n_threads_batch=n_threads,
             n_gpu_layers=0,

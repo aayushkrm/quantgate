@@ -10,6 +10,7 @@ from typer.testing import CliRunner
 
 from quantgate.cli import _perf_metrics, _take, app, load_suite_config, scale_suite
 from quantgate.report import load_report
+from quantgate.schema import Variant
 
 runner = CliRunner()
 
@@ -479,3 +480,49 @@ def test_eval_n_scale_is_recorded_in_env(fake_eval: dict[str, Path]) -> None:
     env = json.loads((fake_eval["out"] / "env.json").read_text(encoding="utf-8"))
     assert env["run"]["n_scale"] == 0.5
     assert env["run"]["suite"]["arc"]["n"] == 150
+
+
+# --- fetch writes the lock file; eval uses it; quality backend limits ----------------------------
+
+
+def test_fetch_writes_sidecar_lock_without_touching_registry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from quantgate import cli as cli_module
+    from quantgate.models import read_lock, sha256_file
+
+    gguf = tmp_path / "x.gguf"
+    gguf.write_bytes(b"observed bytes")
+    variant = Variant(name="q8_0", repo_id="org/repo", filename="x.gguf")
+    filled = variant.model_copy(
+        update={"sha256": sha256_file(gguf), "file_bytes": gguf.stat().st_size}
+    )
+    monkeypatch.setattr(cli_module, "fetch_registry", lambda cfg, models: [(filled, gguf)])
+    registry = tmp_path / "variants.yaml"
+    registry.write_text(CONFIG.read_text(encoding="utf-8"), encoding="utf-8")
+    before = registry.read_text(encoding="utf-8")
+
+    result = _invoke("fetch", "-c", str(registry), "--models-dir", str(tmp_path), "--json")
+    assert result.exit_code == 0, result.output
+    assert registry.read_text(encoding="utf-8") == before, "registry YAML must not be rewritten"
+    lock = read_lock(tmp_path / "variants.lock.json")
+    assert lock["q8_0"]["sha256"] == filled.sha256
+    assert str(tmp_path) not in (tmp_path / "variants.lock.json").read_text(encoding="utf-8")
+
+
+def test_load_backend_refuses_kl_context_that_does_not_fit() -> None:
+    from quantgate import cli as cli_module
+
+    cfg = load_suite_config(CONFIG)
+    too_long = scale_suite(cfg, 1.0).model_copy(
+        update={"kl": cfg.kl.model_copy(update={"ctx": 1024})}
+    )
+    with pytest.raises(cli_module.CliError, match="n_ctx"):
+        cli_module._load_backend(Path("unused.gguf"), too_long)
+
+
+def test_quality_backend_is_512_tokens_with_one_batch() -> None:
+    from quantgate import cli as cli_module
+
+    assert cli_module.CTX_BACKEND == 512
+    assert cli_module.CTX_BACKEND >= load_suite_config(CONFIG).kl.ctx + cli_module.KL_CTX_MARGIN
