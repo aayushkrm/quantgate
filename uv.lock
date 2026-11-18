@@ -1810,10 +1810,6 @@ name = "quantgate"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "datasets" },
-    { name = "huggingface-hub" },
-    { name = "jinja2" },
-    { name = "matplotlib" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "pydantic" },
@@ -1822,7 +1818,14 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+data = [
+    { name = "datasets" },
+    { name = "huggingface-hub" },
+]
 dev = [
+    { name = "datasets" },
+    { name = "huggingface-hub" },
+    { name = "matplotlib" },
     { name = "mypy" },
     { name = "pytest" },
     { name = "ruff" },
@@ -1831,14 +1834,19 @@ dev = [
 llama = [
     { name = "llama-cpp-python" },
 ]
+report = [
+    { name = "matplotlib" },
+]
 
 [package.metadata]
 requires-dist = [
-    { name = "datasets" },
-    { name = "huggingface-hub" },
-    { name = "jinja2" },
+    { name = "datasets", marker = "extra == 'data'" },
+    { name = "datasets", marker = "extra == 'dev'" },
+    { name = "huggingface-hub", marker = "extra == 'data'" },
+    { name = "huggingface-hub", marker = "extra == 'dev'" },
     { name = "llama-cpp-python", marker = "extra == 'llama'", specifier = "==0.3.37" },
-    { name = "matplotlib" },
+    { name = "matplotlib", marker = "extra == 'dev'" },
+    { name = "matplotlib", marker = "extra == 'report'" },
     { name = "mypy", marker = "extra == 'dev'" },
     { name = "numpy" },
     { name = "pydantic", specifier = ">=2" },
@@ -1848,7 +1856,7 @@ requires-dist = [
     { name = "typer" },
     { name = "types-pyyaml", marker = "extra == 'dev'" },
 ]
-provides-extras = ["llama", "dev"]
+provides-extras = ["llama", "data", "report", "dev"]
 
 [[package]]
 name = "rich"

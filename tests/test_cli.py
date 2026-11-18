@@ -659,3 +659,32 @@ def test_perf_conditions_are_not_checked_where_pmset_is_absent() -> None:
     cli_module._check_perf_conditions(
         "q4_k_m", _power(None, available=False), _power(None, available=False)
     )
+
+
+def test_cli_import_does_not_load_the_heavy_extras() -> None:
+    """Q9: the base install runs demo and gate. matplotlib, datasets and huggingface_hub are extras
+    and must not be imported at module load (checked in a clean interpreter)."""
+    import subprocess
+    import sys
+
+    code = (
+        "import sys, quantgate.cli; "
+        "print(int('matplotlib' in sys.modules), int('huggingface_hub' in sys.modules), "
+        "int('datasets' in sys.modules))"
+    )
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)
+    assert out.stdout.strip() == "0 0 0"
+
+
+def test_small_n_hides_the_confidence_interval() -> None:
+    from quantgate.report import _cell
+    from quantgate.schema import MetricValue
+
+    cell = _cell(
+        "top1_agree", MetricValue(name="top1_agree", value=90.6, ci_low=90.6, ci_high=90.6, n=4)
+    )
+    assert "[" not in cell and "CI not shown" in cell
+    shown = _cell(
+        "arc_acc", MetricValue(name="arc_acc", value=60.0, ci_low=55.0, ci_high=65.0, n=300)
+    )
+    assert "[55.0, 65.0] (n=300)" in shown

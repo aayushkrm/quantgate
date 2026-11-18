@@ -17,8 +17,6 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from huggingface_hub import HfApi, hf_hub_download
-from huggingface_hub.errors import EntryNotFoundError
 from pydantic import BaseModel, model_validator
 
 from quantgate.schema import Variant
@@ -150,6 +148,8 @@ def _hub_file_info(repo_id: str, filename: str) -> tuple[str | None, int | None]
     Uses ``lfs.sha256`` and ``lfs.size`` when the file is LFS-tracked (GGUFs are).
     Network errors are not caught: the caller decides whether to continue.
     """
+    from huggingface_hub import HfApi
+
     infos = HfApi().get_paths_info(repo_id, [filename], expand=True)
     for info in infos:
         if getattr(info, "path", None) != filename:
@@ -173,6 +173,8 @@ def fetch_variant(variant: Variant, models_dir: Path) -> tuple[Variant, Path]:
     Raises ValueError on any mismatch. The file is not deleted, so the caller can inspect it.
     Raises huggingface_hub EntryNotFoundError if the Hub lacks the file.
     """
+    from huggingface_hub import hf_hub_download
+
     path = local_path(variant, models_dir)
     if path.is_file() and (variant.sha256 is not None or variant.file_bytes is not None):
         verify_variant(variant, path)
@@ -365,6 +367,8 @@ def ensure_ladder(
     sidecar ``.provenance.json`` makes reruns reuse a self-quantized file instead of redoing
     it. Raises EntryNotFoundError if a rung is missing and self-quantizing is disabled.
     """
+    from huggingface_hub.errors import EntryNotFoundError
+
     registry = load_registry(registry_path)
     ref_variant, ref_path = fetch_variant(registry.variant(registry.reference), models_dir)
     entries: list[LadderEntry] = [

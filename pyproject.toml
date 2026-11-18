@@ -22,15 +22,23 @@ dependencies = [
     "typer",
     "pyyaml",
     "numpy",
-    "matplotlib",
-    "jinja2",
-    "huggingface_hub",
-    "datasets",
 ]
 
+# Base install runs `quantgate demo` and `gate`. The extras add the real eval, the Hub
+# access and the plots, which `quantgate eval`, `fetch` and `report` need.
 [project.optional-dependencies]
 llama = ["llama-cpp-python==0.3.37"]
-dev = ["pytest", "ruff", "mypy", "types-PyYAML"]
+data = ["datasets", "huggingface_hub"]
+report = ["matplotlib"]
+dev = [
+    "pytest",
+    "ruff",
+    "mypy",
+    "types-PyYAML",
+    "datasets",
+    "huggingface_hub",
+    "matplotlib",
+]
 
 [project.scripts]
 quantgate = "quantgate.cli:app"

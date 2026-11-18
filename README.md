@@ -47,7 +47,7 @@ not a measurement.
 To run the real ladder you need the GGUF files and the llama.cpp backend:
 
 ```bash
-uv tool install "quantgate[llama] @ git+https://github.com/aayushkrm/quantgate"
+uv tool install "quantgate[llama,data,report] @ git+https://github.com/aayushkrm/quantgate"
 quantgate fetch -c configs/variants.yaml --models-dir ~/models
 quantgate eval -c configs/variants.yaml --out results/
 quantgate gate results/report.json

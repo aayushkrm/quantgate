@@ -106,11 +106,21 @@ def _fmt(metric: str, value: float) -> str:
     return f"{value:.{_decimals(metric)}f}"
 
 
+MIN_N_FOR_CI: int = 20  # below this, a bootstrap or Wilson interval is not shown (review Q9)
+
+
 def _cell(metric: str, mv: MetricValue | None) -> str:
-    """One table cell: value, bracketed interval (if any) and n."""
+    """One table cell: value, bracketed interval (if any) and n.
+
+    Intervals are not shown for n below MIN_N_FOR_CI. A percentile bootstrap over a handful of
+    units is not a meaningful interval, and the cell says so instead of printing one. The JSON
+    keeps the values.
+    """
     if mv is None:
         return "n/a"
     text = _fmt(metric, mv.value)
+    if mv.n < MIN_N_FOR_CI:
+        return f"{text} (n={mv.n}, CI not shown below n={MIN_N_FOR_CI})"
     if mv.ci_low is not None and mv.ci_high is not None:
         text += f" [{_fmt(metric, mv.ci_low)}, {_fmt(metric, mv.ci_high)}]"
     return f"{text} (n={mv.n})"

@@ -52,7 +52,6 @@ from quantgate.perf import (
     run_perf_subprocess,
     summarize_power_state,
 )
-from quantgate.plots import write_report_plots
 from quantgate.report import (
     build_report,
     load_report,
@@ -933,6 +932,8 @@ def report(
     with _guard(json_out):
         report_path = _report_path(results)
         rep = load_report(report_path)
+        from quantgate.plots import write_report_plots  # matplotlib is an extra
+
         plot_paths = write_report_plots(rep, out_dir)
         written = write_site(rep, out_dir, plot_paths)
         env_src = report_path.parent / "env.json"
