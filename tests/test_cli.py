@@ -541,3 +541,78 @@ def test_raw_completions_go_to_the_user_cache_not_the_repo() -> None:
     assert raw == Path.home() / ".cache" / "quantgate" / "raw" / "q4_k_m"
     assert "raw" in raw.parts
     assert not str(raw.resolve()).startswith(str(REPO.resolve()))
+
+
+def _eval_args(fake: dict[str, Path], *extra: str) -> list[str]:
+    return [
+        "eval",
+        "-c",
+        str(fake["config"]),
+        "--policy",
+        str(POLICY),
+        "--only",
+        "q4_k_m",
+        "--models-dir",
+        str(fake["models"]),
+        "--out",
+        str(fake["out"]),
+        *extra,
+    ]
+
+
+def test_resume_refuses_a_result_made_with_other_settings(fake_eval: dict[str, Path]) -> None:
+    """Q3: arc.json from n-scale 1 must not be reused for n-scale 0.5 in the same directory."""
+    first = _invoke(*_eval_args(fake_eval, "--suite", "arc", "--json"))
+    assert first.exit_code == 0, first.output
+    second = _invoke(*_eval_args(fake_eval, "--suite", "arc", "--n-scale", "0.5", "--json"))
+    assert second.exit_code == 2
+    # The env record guard fires first, because the recorded suite settings differ.
+    assert "records a different" in second.output
+
+
+def test_env_record_refuses_different_n_scale_in_same_directory(
+    fake_eval: dict[str, Path],
+) -> None:
+    first = _invoke(*_eval_args(fake_eval, "--suite", "arc", "--json"))
+    assert first.exit_code == 0, first.output
+    second = _invoke(*_eval_args(fake_eval, "--suite", "kl", "--n-scale", "0.5", "--json"))
+    assert second.exit_code == 2
+    assert "records a different" in second.output
+
+
+def test_clean_rerun_still_skips_with_matching_fingerprint(fake_eval: dict[str, Path]) -> None:
+    first = _invoke(*_eval_args(fake_eval, "--suite", "arc", "--json"))
+    assert first.exit_code == 0, first.output
+    again = _invoke(*_eval_args(fake_eval, "--suite", "arc", "--json"))
+    assert again.exit_code == 0, again.output
+    payload = json.loads(again.output)
+    assert payload["ran"] == []
+    assert "q4_k_m/arc" in payload["skipped"]
+    run_history = json.loads((fake_eval["out"] / "env.json").read_text())["run_history"]
+    assert len(run_history) == 2
+
+
+def test_fingerprint_changes_with_model_hash_and_settings() -> None:
+    from quantgate import cli as cli_module
+
+    cfg = load_suite_config(CONFIG)
+    base = Variant(name="q8_0", repo_id="org/r", filename="q8.gguf", sha256="a" * 64, file_bytes=5)
+    other = base.model_copy(update={"sha256": "b" * 64})
+    fp = cli_module._fingerprint("arc", cfg, base, 1.0)
+    assert fp == cli_module._fingerprint("arc", cfg, base, 1.0)
+    assert fp != cli_module._fingerprint("arc", cfg, other, 1.0)
+    assert fp != cli_module._fingerprint("arc", cfg, base, 0.5)
+    assert fp != cli_module._fingerprint("kl", cfg, base, 1.0)
+
+
+def test_done_raises_on_fingerprint_mismatch_and_never_overwrites(tmp_path: Path) -> None:
+    from quantgate import cli as cli_module
+
+    (tmp_path / "q4").mkdir()
+    stored = tmp_path / "q4" / "arc.json"
+    stored.write_text(json.dumps({"fingerprint": "old", "metrics": []}), encoding="utf-8")
+    assert cli_module._done(tmp_path, "q4", "arc", "old") is True
+    with pytest.raises(cli_module.CliError, match="different configuration"):
+        cli_module._done(tmp_path, "q4", "arc", "new")
+    assert json.loads(stored.read_text(encoding="utf-8"))["fingerprint"] == "old"
+    assert cli_module._done(tmp_path, "q4", "gsm8k", "any") is False

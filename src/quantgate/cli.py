@@ -5,6 +5,7 @@ danger), 2 = usage or runtime error. Errors print one clean line (or a JSON erro
 --json), never a traceback. Demo output is labelled SYNTHETIC.
 """
 
+import hashlib
 import json
 import math
 import shutil
@@ -16,6 +17,7 @@ from typing import Annotated, Any, TypeVar
 import typer
 import yaml
 
+from quantgate import __version__ as quantgate_version
 from quantgate.backend import FakeBackend, LlamaCppBackend
 from quantgate.data import load_arc_easy, load_gsm8k, load_wikitext_passages, select_subset
 from quantgate.envinfo import collect as collect_envinfo
@@ -55,7 +57,7 @@ from quantgate.report import (
     write_report,
     write_site,
 )
-from quantgate.resources import config_path, is_bundled
+from quantgate.resources import config_path, is_bundled, subsets_dir
 from quantgate.schema import (
     ArcConfig,
     Backend,
@@ -252,9 +254,62 @@ def _model_path(models_dir: Path, variant: Variant) -> Path:
     return models_dir / variant.repo_id / variant.filename
 
 
-def _done(out: Path, variant: str, suite: str) -> bool:
-    """True if the result file for one variant and suite already exists (resumable runs)."""
-    return (out / variant / f"{suite}.json").is_file()
+METHOD_VERSION = "2"  # bump whenever the way a suite is computed changes (docs/deviations.md)
+
+
+def _subset_digest() -> str:
+    """SHA-256 over the committed subset files, so a changed subset changes every fingerprint."""
+    digest = hashlib.sha256()
+    base = subsets_dir()
+    for path in sorted(base.glob("*.json")):
+        digest.update(path.name.encode("utf-8"))
+        digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
+def _fingerprint(suite: str, cfg: SuiteConfig, variant: Variant, n_scale: float) -> str:
+    """Identity of one suite result: method, code version, settings, model file and subsets.
+
+    Two runs share a result file only when this matches (review Q3). The variant should carry
+    its file size, from the registry, the lock or the file on disk.
+    """
+    payload: dict[str, Any] = {
+        "method_version": METHOD_VERSION,
+        "quantgate_version": quantgate_version,
+        "suite": suite,
+        "suite_cfg": cfg.model_dump(mode="json")[suite],
+        "seed": cfg.seed,
+        "n_scale": n_scale,
+        "ctx": CTX_BACKEND,
+        "variant": {
+            "name": variant.name,
+            "repo_id": variant.repo_id,
+            "filename": variant.filename,
+            "sha256": variant.sha256,
+            "file_bytes": variant.file_bytes,
+        },
+        "subsets_sha256": _subset_digest(),
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def _done(out: Path, variant: str, suite: str, fingerprint: str) -> bool:
+    """True if a finished result file exists for this fingerprint (resumable runs).
+
+    Raises CliError if the file exists but was made under a different configuration. Such a file
+    is never reused silently, and it is never overwritten either: the user chooses a new --out
+    directory or deletes the file.
+    """
+    path = out / variant / f"{suite}.json"
+    if not path.is_file():
+        return False
+    stored = json.loads(path.read_text(encoding="utf-8")).get("fingerprint")
+    if stored != fingerprint:
+        raise CliError(
+            f"{_portable(path)} was produced under a different configuration (fingerprint "
+            "differs). Use a new --out directory, or delete that file to recompute it."
+        )
+    return True
 
 
 def _write_suite(
@@ -416,6 +471,13 @@ def _perf_metrics(
     return metrics
 
 
+def _with_size(variant: Variant, paths: dict[str, Path]) -> Variant:
+    """The variant with file_bytes from the file on disk when the registry and lock lack it."""
+    if variant.file_bytes is not None or variant.name not in paths:
+        return variant
+    return variant.model_copy(update={"file_bytes": paths[variant.name].stat().st_size})
+
+
 def _quality_phase(
     variants: list[Variant],
     registry: Registry,
@@ -425,6 +487,7 @@ def _quality_phase(
     out: Path,
     ran: list[str],
     skipped: list[str],
+    n_scale: float = 1.0,
 ) -> None:
     """Run the quality suites variant by variant, reference first, skipping finished files.
 
@@ -437,6 +500,9 @@ def _quality_phase(
     cache: dict[str, Any] = {}
     ref_backend: Backend | None = None
 
+    def fp(v: Variant, suite: str) -> str:
+        return _fingerprint(suite, cfg, _with_size(v, paths), n_scale)
+
     def ensure_ref() -> Backend:
         nonlocal ref_backend
         if ref_backend is None:
@@ -445,7 +511,7 @@ def _quality_phase(
 
     try:
         for v in variants:
-            todo = [s for s in quality if not _done(out, v.name, s)]
+            todo = [s for s in quality if not _done(out, v.name, s, fp(v, s))]
             skipped += [f"{v.name}/{s}" for s in quality if s not in todo]
             if not todo:
                 continue
@@ -456,7 +522,9 @@ def _quality_phase(
                 for s in todo:
                     raw_dir = _raw_dir(v.name)
                     metrics, extra = _run_suite(s, backend, ref_for_kl, cfg, cache, raw_dir)
-                    _write_suite(out, v.name, s, metrics, extra)
+                    _write_suite(
+                        out, v.name, s, metrics, {**(extra or {}), "fingerprint": fp(v, s)}
+                    )
                     ran.append(f"{v.name}/{s}")
             finally:
                 if owned:
@@ -473,16 +541,18 @@ def _perf_phase(
     out: Path,
     ran: list[str],
     skipped: list[str],
+    n_scale: float = 1.0,
 ) -> None:
     """Run perf for each variant in its own subprocess, one at a time, after the quality phase."""
     for v in variants:
-        if _done(out, v.name, "perf"):
+        fp = _fingerprint("perf", cfg, _with_size(v, paths), n_scale)
+        if _done(out, v.name, "perf", fp):
             skipped.append(f"{v.name}/perf")
             continue
         raw = run_perf_subprocess(paths[v.name], cfg.perf, timeout_s=PERF_TIMEOUT_S)
         metrics = _perf_metrics(raw, cfg.perf.repeats, paths[v.name], need_rss=True)
         # Demo perf is in-process, so it has no file; here the file size is always recorded.
-        _write_suite(out, v.name, "perf", metrics)
+        _write_suite(out, v.name, "perf", metrics, {"fingerprint": fp})
         ran.append(f"{v.name}/perf")
 
 
@@ -643,7 +713,7 @@ def eval_cmd(
 
         out.mkdir(parents=True, exist_ok=True)
         env_info = _collect_env()
-        env_info["run"] = {
+        run_now: dict[str, Any] = {
             "suite": cfg.model_dump(mode="json"),
             "n_scale": n_scale,
             "suites": suites,
@@ -651,13 +721,15 @@ def eval_cmd(
             "policy": _portable(policy),
             "unverified": unverified,
         }
+        env_info["run"] = _merge_env_run(out / "env.json", run_now)
+        env_info["run_history"] = _run_history(out / "env.json", env_info, run_now)
         (out / "env.json").write_text(json.dumps(env_info, indent=2, sort_keys=True) + "\n")
 
         ran: list[str] = []
         skipped: list[str] = []
-        _quality_phase(variants, registry, paths, suites, cfg, out, ran, skipped)
+        _quality_phase(variants, registry, paths, suites, cfg, out, ran, skipped, n_scale)
         if "perf" in suites:
-            _perf_phase(variants, paths, cfg, out, ran, skipped)
+            _perf_phase(variants, paths, cfg, out, ran, skipped, n_scale)
 
         results = _assemble(registry, paths, suites, out, pinned={v.name: v for v in variants})
         decisions = evaluate(results, registry.reference, gate_policy)
@@ -685,6 +757,43 @@ def eval_cmd(
             f"skipped {len(skipped)} finished. Recommended: {recommended or 'none'}."
         )
         _emit(json_out, payload, text)
+
+
+def _merge_env_run(env_path: Path, run_now: dict[str, Any]) -> dict[str, Any]:
+    """The run settings to record. An existing env.json must agree on suite, n-scale and policy.
+
+    Variants and suites accumulate across runs into the same results directory. Settings that
+    change the numbers may not change silently (review Q3), so a mismatch is refused.
+    """
+    if not env_path.is_file():
+        return run_now
+    prior_run = json.loads(env_path.read_text(encoding="utf-8")).get("run", {})
+    for key in ("suite", "n_scale", "policy"):
+        if prior_run.get(key) != run_now[key]:
+            raise CliError(
+                f"{_portable(env_path)} records a different {key}. Use a new --out directory "
+                "for different settings."
+            )
+    merged = dict(run_now)
+    merged["variants"] = sorted(set(prior_run.get("variants", [])) | set(run_now["variants"]))
+    merged["suites"] = [
+        s for s in SUITE_NAMES if s in set(prior_run.get("suites", [])) | set(run_now["suites"])
+    ]
+    return merged
+
+
+def _run_history(env_path: Path, env_info: dict[str, Any], run_now: dict[str, Any]) -> list[Any]:
+    """Earlier run records from env.json plus this run, so that reruns stay visible."""
+    prior: list[Any] = []
+    if env_path.is_file():
+        prior = json.loads(env_path.read_text(encoding="utf-8")).get("run_history", [])
+    entry = {
+        "utc_time": env_info.get("utc_time"),
+        "git_sha": env_info.get("git_sha"),
+        "suites": run_now["suites"],
+        "variants": run_now["variants"],
+    }
+    return [*prior, entry]
 
 
 def _report_path(path: Path) -> Path:
