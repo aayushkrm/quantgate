@@ -7,6 +7,7 @@ import types
 from pathlib import Path
 from typing import Any
 
+import huggingface_hub
 import pytest
 from huggingface_hub.errors import EntryNotFoundError
 
@@ -93,8 +94,8 @@ class FakeHub:
             target.write_bytes(hub.files[filename])
             return str(target)
 
-        monkeypatch.setattr(models, "HfApi", _Api)
-        monkeypatch.setattr(models, "hf_hub_download", _download)
+        monkeypatch.setattr(huggingface_hub, "HfApi", _Api)
+        monkeypatch.setattr(huggingface_hub, "hf_hub_download", _download)
 
 
 class FakeLlamaCpp:
