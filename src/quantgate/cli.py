@@ -47,6 +47,7 @@ from quantgate.models import (
     write_lock,
 )
 from quantgate.perf import (
+    PERF_N_CTX,
     measure_in_process,
     power_state,
     run_perf_subprocess,
@@ -258,7 +259,11 @@ def _model_path(models_dir: Path, variant: Variant) -> Path:
     return models_dir / variant.repo_id / variant.filename
 
 
-METHOD_VERSION = "2"  # bump whenever the way a suite is computed changes (docs/deviations.md)
+METHOD_VERSION = "3"  # bump whenever the way a suite is computed changes (docs/deviations.md)
+GEN_N_CTX = 1024  # generation suites (gsm8k, refusal): no logits buffer, room for 384 + prompt
+GEN_PROMPT_ROOM = 256  # tokens reserved for the chat prompt inside a generation context
+LOGIT_SUITES: tuple[str, ...] = ("kl", "arc")  # need logits: KL and ARC scoring
+GEN_SUITES: tuple[str, ...] = ("gsm8k", "refusal")  # generation only (deviation 15)
 
 
 def _subset_digest() -> str:
@@ -269,6 +274,15 @@ def _subset_digest() -> str:
         digest.update(path.name.encode("utf-8"))
         digest.update(path.read_bytes())
     return digest.hexdigest()
+
+
+def _suite_ctx(suite: str) -> int:
+    """The context size a suite runs with, which is part of its fingerprint."""
+    if suite in GEN_SUITES:
+        return GEN_N_CTX
+    if suite == "perf":
+        return PERF_N_CTX
+    return CTX_BACKEND
 
 
 def _fingerprint(suite: str, cfg: SuiteConfig, variant: Variant, n_scale: float) -> str:
@@ -284,7 +298,7 @@ def _fingerprint(suite: str, cfg: SuiteConfig, variant: Variant, n_scale: float)
         "suite_cfg": cfg.model_dump(mode="json")[suite],
         "seed": cfg.seed,
         "n_scale": n_scale,
-        "ctx": CTX_BACKEND,
+        "ctx": _suite_ctx(suite),
         "variant": {
             "name": variant.name,
             "repo_id": variant.repo_id,
@@ -336,25 +350,47 @@ def _write_suite(
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
-def _load_backend(path: Path, cfg: SuiteConfig) -> Backend:
-    """Load one GGUF file for the quality suites: CPU only, logits for every position.
+def _backend_options(generation: bool, cfg: SuiteConfig) -> dict[str, Any]:
+    """Context and logits settings for one backend kind (deviation 15).
 
-    n_ctx is CTX_BACKEND (512) and n_batch equals n_ctx, so each KL passage is evaluated as one
-    batch of its own length. Raises CliError if the KL passages would not fit.
+    Logits backend (KL, ARC): logits_all=True, n_ctx=512, which is the passage length plus margin.
+    The logits buffer is n_ctx x vocab, so it stays small. Generation backend (GSM8K, refusal):
+    logits_all=False, n_ctx=1024, with no per-position logits. Raises CliError if the settings
+    cannot hold their inputs.
     """
+    if generation:
+        if cfg.gsm8k.max_tokens + GEN_PROMPT_ROOM > GEN_N_CTX:
+            raise CliError(
+                f"gsm8k.max_tokens={cfg.gsm8k.max_tokens} does not fit n_ctx={GEN_N_CTX} "
+                f"with {GEN_PROMPT_ROOM} tokens of prompt"
+            )
+        return {"n_ctx": GEN_N_CTX, "logits_all": False, "n_batch": GEN_N_CTX}
     if cfg.kl.ctx + KL_CTX_MARGIN > CTX_BACKEND:
         raise CliError(
             f"kl.ctx={cfg.kl.ctx} needs n_ctx >= {cfg.kl.ctx + KL_CTX_MARGIN}; "
-            f"the quality backend has n_ctx={CTX_BACKEND}"
+            f"the logits backend has n_ctx={CTX_BACKEND}"
         )
+    return {"n_ctx": CTX_BACKEND, "logits_all": True, "n_batch": CTX_BACKEND}
+
+
+def _load_backend(path: Path, cfg: SuiteConfig, generation: bool = False) -> Backend:
+    """Load one GGUF file for one kind of quality suite: CPU only, perf thread count."""
     return LlamaCppBackend(
         path,
-        n_ctx=CTX_BACKEND,
         n_threads=cfg.perf.threads,
         seed=cfg.seed,
-        logits_all=True,
-        n_batch=CTX_BACKEND,
+        **_backend_options(generation, cfg),
     )
+
+
+def _split_quality(todo: list[str]) -> tuple[list[str], list[str]]:
+    """Split pending quality suites into those that need the logits backend and the rest."""
+    logit = [s for s in todo if s in LOGIT_SUITES]
+    gen = [s for s in todo if s in GEN_SUITES]
+    unknown = [s for s in todo if s not in LOGIT_SUITES and s not in GEN_SUITES]
+    if unknown:
+        raise CliError(f"no backend kind for suite(s): {', '.join(unknown)}")
+    return logit, gen
 
 
 def _take(items: list[_T], n: int, seed: int) -> list[_T]:
@@ -416,11 +452,20 @@ def _run_suite(
             cache["gsm8k"] = _take(load_gsm8k(), cfg.gsm8k.n, cfg.seed)
         pairs: list[tuple[str, str]] = cache["gsm8k"]
         gsm_result = score_gsm8k(backend, pairs, cfg.gsm8k.max_tokens, cfg.seed)
+        # A truncated generation's last number is not an answer, so the count is recorded.
+        diagnostics = {
+            "gsm8k": {
+                "n": len(pairs),
+                "n_truncated": gsm_result.n_truncated,
+                "max_tokens": cfg.gsm8k.max_tokens,
+            }
+        }
         # GSM8K items have no ids in the committed subset, so their position in the subset is
         # the id. The subset order is fixed by the seed, and the fingerprint covers it.
         gsm_extra = {
             "item_ids": {"gsm8k_acc": [str(i) for i in range(len(pairs))]},
             "per_item": {"gsm8k_acc": [int(c) for c in gsm_result.correct]},
+            "diagnostics": diagnostics,
         }
         return [gsm_result.metric], gsm_extra
     if name == "refusal":
@@ -508,23 +553,25 @@ def _quality_phase(
 ) -> None:
     """Run the quality suites variant by variant, reference first, skipping finished files.
 
-    The reference backend stays loaded for the whole phase, because KL needs it. Candidates are
-    loaded one at a time.
+    Each variant gets up to two backends, one after the other (deviation 15). The logits backend
+    serves KL and ARC. The generation backend serves GSM8K and refusal. The reference's logits
+    backend stays loaded for the whole phase, because KL needs it. Candidates are loaded one at a
+    time.
     """
     quality = [s for s in suites if s != "perf"]
     if not quality:
         return
     cache: dict[str, Any] = {}
-    ref_backend: Backend | None = None
+    ref_logits: Backend | None = None
 
     def fp(v: Variant, suite: str) -> str:
         return _fingerprint(suite, cfg, _with_size(v, paths), n_scale)
 
-    def ensure_ref() -> Backend:
-        nonlocal ref_backend
-        if ref_backend is None:
-            ref_backend = _load_backend(paths[registry.reference], cfg)
-        return ref_backend
+    def ensure_ref_logits() -> Backend:
+        nonlocal ref_logits
+        if ref_logits is None:
+            ref_logits = _load_backend(paths[registry.reference], cfg, generation=False)
+        return ref_logits
 
     try:
         for v in variants:
@@ -532,23 +579,43 @@ def _quality_phase(
             skipped += [f"{v.name}/{s}" for s in quality if s not in todo]
             if not todo:
                 continue
+            logit_todo, gen_todo = _split_quality(todo)
             owned = v.name != registry.reference
-            backend = _load_backend(paths[v.name], cfg) if owned else ensure_ref()
-            try:
-                ref_for_kl = ensure_ref() if "kl" in todo else None
-                for s in todo:
-                    raw_dir = _raw_dir(v.name)
-                    metrics, extra = _run_suite(s, backend, ref_for_kl, cfg, cache, raw_dir)
-                    _write_suite(
-                        out, v.name, s, metrics, {**(extra or {}), "fingerprint": fp(v, s)}
-                    )
-                    ran.append(f"{v.name}/{s}")
-            finally:
-                if owned:
-                    backend.close()
+            if logit_todo:
+                backend = (
+                    _load_backend(paths[v.name], cfg, generation=False)
+                    if owned
+                    else ensure_ref_logits()
+                )
+                try:
+                    ref_for_kl = ensure_ref_logits() if "kl" in logit_todo else None
+                    for s in logit_todo:
+                        metrics, extra = _run_suite(
+                            s, backend, ref_for_kl, cfg, cache, _raw_dir(v.name)
+                        )
+                        _write_suite(
+                            out, v.name, s, metrics, {**(extra or {}), "fingerprint": fp(v, s)}
+                        )
+                        ran.append(f"{v.name}/{s}")
+                finally:
+                    if owned:
+                        backend.close()
+            if gen_todo:
+                gen_backend = _load_backend(paths[v.name], cfg, generation=True)
+                try:
+                    for s in gen_todo:
+                        metrics, extra = _run_suite(
+                            s, gen_backend, None, cfg, cache, _raw_dir(v.name)
+                        )
+                        _write_suite(
+                            out, v.name, s, metrics, {**(extra or {}), "fingerprint": fp(v, s)}
+                        )
+                        ran.append(f"{v.name}/{s}")
+                finally:
+                    gen_backend.close()
     finally:
-        if ref_backend is not None:
-            ref_backend.close()
+        if ref_logits is not None:
+            ref_logits.close()
 
 
 def _check_perf_conditions(
@@ -867,6 +934,95 @@ def _report_path(path: Path) -> Path:
     if not candidate.is_file():
         raise CliError(f"no report at {_portable(candidate)}; run `quantgate eval` first")
     return candidate
+
+
+audit_app = typer.Typer(
+    help="Refusal classifier audit: export a seeded sample for hand labelling.",
+    no_args_is_help=True,
+    add_completion=False,
+)
+app.add_typer(audit_app, name="audit")
+
+
+@audit_app.command("export")
+def audit_export(
+    config: Annotated[
+        Path | None, typer.Option("--config", "-c", help="Variant registry YAML.")
+    ] = None,
+    only: Annotated[
+        str | None, typer.Option("--only", help="Comma-separated variants (default: all).")
+    ] = None,
+    n: Annotated[int, typer.Option("--n", help="Items sampled per variant.")] = 50,
+    seed: Annotated[int, typer.Option("--seed", help="Sampling seed.")] = 0,
+    raw_root: Annotated[
+        Path | None, typer.Option("--raw-root", help="Raw completions root (local).")
+    ] = None,
+    out: Annotated[
+        Path | None, typer.Option("--out", help="CSV to write (local, never committed).")
+    ] = None,
+    json_out: JsonOption = False,
+) -> None:
+    """Write a CSV of sampled refusal items for hand labelling. It holds no completion text.
+
+    Each row gives the prompt id, the regex flag, the SHA-256 of the completion, and the local
+    path and line of the raw record. The CSV contains local paths, so it must not be committed.
+    """
+    from quantgate.audit import DEFAULT_AUDIT_OUT, DEFAULT_RAW_ROOT, export_audit
+
+    with _guard(json_out):
+        if n <= 0:
+            raise CliError("--n must be positive")
+        registry = load_registry(_registry_arg(config))
+        known = [v.name for v in registry.variants]
+        names = known if only is None else [s.strip() for s in only.split(",") if s.strip()]
+        unknown = sorted(set(names) - set(known))
+        if unknown:
+            raise CliError(f"unknown variant(s): {', '.join(unknown)}")
+        summary = export_audit(
+            (DEFAULT_RAW_ROOT if raw_root is None else raw_root).expanduser(),
+            names,
+            n,
+            seed,
+            (DEFAULT_AUDIT_OUT if out is None else out).expanduser(),
+        )
+        lines = [f"Wrote {summary['rows']} row(s) to {summary['out']}."]
+        for variant, count in summary["exported"].items():
+            lines.append(f"  {variant}: {count} sampled")
+        if summary["skipped"]:
+            lines.append(f"  no raw records yet for: {', '.join(summary['skipped'])}")
+        lines.append("The CSV holds local paths. Do not commit it.")
+        _emit(json_out, {"ok": True, **summary}, "\n".join(lines))
+
+
+@audit_app.command("score")
+def audit_score(
+    csv_path: Annotated[Path, typer.Argument(help="A labelled audit CSV (human_label filled).")],
+    json_out: JsonOption = False,
+) -> None:
+    """Agreement of the regex flag with the human labels: precision, recall, specificity.
+
+    The numbers come from the labelled CSV. Nothing is typed by hand.
+    """
+    from quantgate.audit import score_audit
+
+    with _guard(json_out):
+        if not csv_path.is_file():
+            raise CliError(f"no audit CSV at {csv_path}")
+        summary = score_audit(csv_path)
+        lines = [
+            f"rows {summary['rows']}, labelled {summary['labelled']}, "
+            f"unclear {summary['unclear']}, blank {summary['blank']}",
+            f"confusion: {summary['confusion']}",
+        ]
+        for key in ("precision_pct", "recall_pct", "specificity_pct"):
+            r = summary[key]
+            if r["value"] is None:
+                lines.append(f"{key}: n/a (no denominator)")
+            else:
+                lines.append(
+                    f"{key}: {r['value']:.1f} [{r['ci_low']:.1f}, {r['ci_high']:.1f}] (n={r['n']})"
+                )
+        _emit(json_out, {"ok": True, **summary}, "\n".join(lines))
 
 
 @app.command()

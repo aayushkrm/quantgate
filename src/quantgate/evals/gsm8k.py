@@ -25,10 +25,15 @@ _NUMBER_RE = re.compile(r"(?P<sign>-)?\$?(?P<num>\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d
 
 @dataclass(frozen=True)
 class GsmResult:
-    """Accuracy metric plus per-item correctness, in item order, for paired comparisons."""
+    """Accuracy metric plus per-item correctness, in item order, for paired comparisons.
+
+    n_truncated counts generations that reached max_tokens. Those are cut off, so their last
+    number is not an answer. The count is a diagnostic and is stored in the suite file.
+    """
 
     metric: MetricValue
     correct: list[bool]
+    n_truncated: int = 0
 
 
 def _glued_to_previous(text: str, pos: int) -> bool:
@@ -100,6 +105,7 @@ def score_gsm8k(
     if max_tokens <= 0:
         raise ValueError("max_tokens must be positive")
     correct: list[bool] = []
+    n_truncated = 0
     for question, answer_field in items:
         gold = gold_answer(answer_field)
         result = backend.generate(
@@ -108,6 +114,8 @@ def score_gsm8k(
             temperature=0.0,
             seed=seed,
         )
+        if result.n_gen_tokens >= max_tokens:
+            n_truncated += 1
         correct.append(is_correct(result.text, gold))
     n = len(correct)
     k = sum(correct)
@@ -119,7 +127,7 @@ def score_gsm8k(
         ci_high=100.0 * high,
         n=n,
     )
-    return GsmResult(metric=metric, correct=correct)
+    return GsmResult(metric=metric, correct=correct, n_truncated=n_truncated)
 
 
 def run_gsm8k(

@@ -364,7 +364,7 @@ def fake_eval(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Path
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(b"synthetic gguf stand-in\n" * 8)
 
-    def load_backend(path: Path, cfg: object) -> FakeBackend:
+    def load_backend(path: Path, cfg: object, generation: bool = False) -> FakeBackend:
         perturbation = 0.0 if "fp16" in path.name else 0.05
         return FakeBackend(seed=0, perturbation=perturbation)
 
@@ -688,3 +688,50 @@ def test_small_n_hides_the_confidence_interval() -> None:
         "arc_acc", MetricValue(name="arc_acc", value=60.0, ci_low=55.0, ci_high=65.0, n=300)
     )
     assert "[55.0, 65.0] (n=300)" in shown
+
+
+def test_backend_options_split_logits_and_generation() -> None:
+    """Deviation 15: KL and ARC need logits at n_ctx 512; generation runs at n_ctx 1024 without
+    the per-position logits buffer."""
+    from quantgate import cli as cli_module
+
+    cfg = load_suite_config(CONFIG)
+    logits = cli_module._backend_options(False, cfg)
+    gen = cli_module._backend_options(True, cfg)
+    assert logits == {"n_ctx": 512, "logits_all": True, "n_batch": 512}
+    assert gen == {"n_ctx": 1024, "logits_all": False, "n_batch": 1024}
+
+
+def test_split_quality_routes_logits_and_generation_suites() -> None:
+    from quantgate import cli as cli_module
+
+    assert cli_module._split_quality(["kl", "arc", "gsm8k", "refusal"]) == (
+        ["kl", "arc"],
+        ["gsm8k", "refusal"],
+    )
+    assert cli_module._split_quality(["gsm8k"]) == ([], ["gsm8k"])
+
+
+def test_generation_budget_must_fit_its_context() -> None:
+    from quantgate import cli as cli_module
+
+    cfg = load_suite_config(CONFIG)
+    too_long = cfg.model_copy(update={"gsm8k": cfg.gsm8k.model_copy(update={"max_tokens": 900})})
+    with pytest.raises(cli_module.CliError, match="does not fit"):
+        cli_module._backend_options(True, too_long)
+
+
+def test_gsm8k_counts_truncated_generations() -> None:
+    """A generation that reaches max_tokens is cut off and counted as truncated."""
+    from quantgate.backend import FakeBackend
+    from quantgate.evals.gsm8k import build_messages, score_gsm8k
+
+    question = "How many apples?"
+    answer = "steps\n#### 4"
+    cut_off = FakeBackend(script={build_messages(question)[0]["content"]: "x" * 200})
+    result = score_gsm8k(cut_off, [(question, answer)], max_tokens=16, seed=0)
+    assert result.n_truncated == 1
+    finished = FakeBackend(script={build_messages(question)[0]["content"]: "the answer is 4"})
+    result = score_gsm8k(finished, [(question, answer)], max_tokens=64, seed=0)
+    assert result.n_truncated == 0
+    assert result.correct == [True]
