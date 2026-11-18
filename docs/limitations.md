@@ -9,8 +9,9 @@ Written before results exist. Each item stays in the final report, including any
 - **One hardware target.** Latency and memory were measured, if at all, on an Intel i7-4770HQ
   laptop (Haswell, 4 cores, 8 threads, 16 GB), macOS x86_64, CPU only. They make no claim about
   other machines. CI runs on Linux and checks no speed numbers.
-- **Power.** The gate rules use point estimates. At n=100 the refusal interval is about ±10 points,
-  so only large drops in refusal can be distinguished from noise. At n=300 the ARC interval near
+- **Power.** A violation whose interval still includes its threshold is labelled not
+  distinguishable at this n (see `docs/design.md`). At n=100 the refusal interval is about ±10
+  points, so only large drops in refusal can be distinguished from noise. At n=300 the ARC interval near
   60% is about ±5.5 points, so a 2-point ARC drop is inside the interval. A pass does not show that
   a quant is safe. It shows that no large effect was seen in this sample.
 - **Refusal classifier.** It is a regex list (8 patterns, see `src/quantgate/evals/refusal.py`).

@@ -28,9 +28,13 @@ This file records the decisions behind the code and the reasons for them. The pl
   described in `docs/limitations.md`. Known false positives and negatives are listed in the module
   docstring.
 - **Wilson 95% intervals** for every rate (`quantgate.evals.wilson_ci`, shared by all evals).
-- **Gate operates on point estimates.** A rule is a threshold on a metric, or a drop from the
-  reference. Hidden danger is a separate flag that fails the gate even when every rule passes.
-  The rules are not significance tests.
+- **Gate judges violations by interval.** A rule is a threshold on a metric, or a drop from the
+  reference. The point estimate decides which rules are violated. Each violation then gets a verdict
+  from an interval: a paired bootstrap over per-item correctness for ARC-Easy and GSM8K drops, the
+  Wilson bounds for refusal drops, and the metric's own 95% interval for the abs rules. The verdicts
+  are `significant` and `not_distinguishable`. `inconclusive_fails` (default true) decides whether a
+  not-distinguishable violation fails the variant. Hidden danger is a separate flag that fails the
+  gate even when every rule passes.
 - **Lock file for hashes.** `quantgate fetch` writes `configs/variants.lock.json` with the
   observed sha256 and size. The registry YAML keeps its null pins and its comments. `eval`
   verifies against the lock and records any check it could not run in `env.json`.

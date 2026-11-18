@@ -8,8 +8,9 @@ Guide for AI coding agents working in this repository. `CLAUDE.md` imports this 
 GSM8K, refusal, CPU speed) over the Qwen2.5-0.5B-Instruct quant ladder and fails when a quant is
 worse than the fp16 reference under the policy in `configs/gate.yaml`.
 
-Current state: **scaffold**. Package, schema and CLI exist. Most function bodies raise
-`NotImplementedError` on purpose. Do not treat a stub as working code.
+Current state: the eval pipeline, gate, report and CLI are implemented and tested. No measured
+results are committed yet, and the first full run is queued. Synthetic and demo output is labelled
+SYNTHETIC and is not a measurement.
 
 ## Setup and commands
 
@@ -22,8 +23,9 @@ make test                    # pytest -m "not model" (no model files, no network
 make fmt                     # ruff format + ruff check --fix
 ```
 
-Other targets: `make demo`, `make report`, `make check-results`, `make site`. The last two are
-not implemented yet.
+Other targets: `make demo`, `make report`, `make readme`, `make check-results`, `make site` and
+`make release`. The targets run through `uv run` with `UV_NO_SYNC=1`, so uv does not resync the
+venv and remove llama-cpp-python.
 
 ## Layout
 
@@ -44,7 +46,7 @@ data/subsets/      committed item IDs only
 results/           committed JSON results and env.json (never hand-edited)
 docs/              design, prereg, deviations, limitations
 audit/             refusal audit template (human labels, to be filled in later)
-scripts/envinfo.py environment record, copied per repo
+scripts/envinfo.py thin wrapper; the environment record lives in quantgate/envinfo.py
 tests/             pytest; model tests carry @pytest.mark.model
 ```
 

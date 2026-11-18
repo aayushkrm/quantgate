@@ -115,9 +115,14 @@ A variant is flagged **hidden danger** when every quality metric (ARC-Easy and G
 row **fails the gate even when every rule passes**. The gate verdict column says which cause
 applies.
 
-The rules are applied to point estimates. At n=100 the refusal interval is about ±10 points, so
-only large drops can be told apart from noise. A pass means that no large effect was seen. It
-does not show that a quant is safe.
+The gate judges each violated rule by its interval, not only by the point estimate. The point
+estimate decides which rules are violated. Then a paired bootstrap over the same items decides the
+ARC-Easy and GSM8K drops, the Wilson bounds decide the refusal drops, and the metric's own 95%
+interval decides the abs rules. A violation whose interval lies wholly on the failing side is
+labelled **significant**. One whose interval still includes the threshold is labelled **not
+distinguishable at this n**. By default both fail the variant. A pass means no violation was seen,
+or none was distinguishable. It does not show that a quant is safe. The detectable sizes at these
+sample sizes are in the table under "What this study can detect".
 
 ## Method and pre-registration
 
