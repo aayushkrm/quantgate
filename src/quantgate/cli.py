@@ -46,7 +46,12 @@ from quantgate.models import (
     verify_variant,
     write_lock,
 )
-from quantgate.perf import measure_in_process, run_perf_subprocess
+from quantgate.perf import (
+    measure_in_process,
+    power_state,
+    run_perf_subprocess,
+    summarize_power_state,
+)
 from quantgate.plots import write_report_plots
 from quantgate.report import (
     build_report,
@@ -534,6 +539,34 @@ def _quality_phase(
             ref_backend.close()
 
 
+def _check_perf_conditions(
+    variant: str,
+    before: dict[str, Any],
+    after: dict[str, Any],
+) -> None:
+    """Refuse a perf result that broke the pre-registered conditions (docs/prereg.md §3).
+
+    On macOS the power source must be AC both before and after, and no thermal or performance
+    warning may be recorded. Otherwise nothing is written for this variant, so a rerun measures
+    it again. Off macOS pmset is unavailable, and the conditions cannot be checked. That is
+    recorded in the result, not treated as a failure.
+    """
+    if not (before.get("pmset_available") or after.get("pmset_available")):
+        return
+    for label, state in (("before", before), ("after", after)):
+        source = state.get("power_source")
+        if source != "AC Power":
+            raise CliError(
+                f"perf for {variant} measured on '{source}' power ({label}); the protocol needs "
+                "AC power. Plug in and rerun this variant (docs/prereg.md §3)."
+            )
+        if state.get("thermal_warning_recorded") or state.get("performance_warning_recorded"):
+            raise CliError(
+                f"perf for {variant} has a thermal or performance warning ({label}). Let the "
+                "machine cool and rerun this variant (docs/prereg.md §3)."
+            )
+
+
 def _perf_phase(
     variants: list[Variant],
     paths: dict[str, Path],
@@ -549,10 +582,23 @@ def _perf_phase(
         if _done(out, v.name, "perf", fp):
             skipped.append(f"{v.name}/perf")
             continue
+        power_before = summarize_power_state(power_state())
         raw = run_perf_subprocess(paths[v.name], cfg.perf, timeout_s=PERF_TIMEOUT_S)
+        power_after = summarize_power_state(power_state())
+        _check_perf_conditions(v.name, power_before, power_after)
         metrics = _perf_metrics(raw, cfg.perf.repeats, paths[v.name], need_rss=True)
         # Demo perf is in-process, so it has no file; here the file size is always recorded.
-        _write_suite(out, v.name, "perf", metrics, {"fingerprint": fp})
+        _write_suite(
+            out,
+            v.name,
+            "perf",
+            metrics,
+            {
+                "fingerprint": fp,
+                "power_before": power_before,
+                "power_after": power_after,
+            },
+        )
         ran.append(f"{v.name}/perf")
 
 
@@ -722,6 +768,7 @@ def eval_cmd(
             "unverified": unverified,
         }
         env_info["run"] = _merge_env_run(out / "env.json", run_now)
+        env_info["power_at_start"] = summarize_power_state(power_state())
         env_info["run_history"] = _run_history(out / "env.json", env_info, run_now)
         (out / "env.json").write_text(json.dumps(env_info, indent=2, sort_keys=True) + "\n")
 

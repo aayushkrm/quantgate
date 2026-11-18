@@ -616,3 +616,46 @@ def test_done_raises_on_fingerprint_mismatch_and_never_overwrites(tmp_path: Path
         cli_module._done(tmp_path, "q4", "arc", "new")
     assert json.loads(stored.read_text(encoding="utf-8"))["fingerprint"] == "old"
     assert cli_module._done(tmp_path, "q4", "gsm8k", "any") is False
+
+
+def _power(source: str | None = "AC Power", thermal: bool = False, available: bool = True) -> dict:
+    return {
+        "pmset_available": available,
+        "power_source": source,
+        "battery_percent": 80,
+        "thermal_warning_recorded": thermal,
+        "performance_warning_recorded": False,
+        "cpu_speed_limit": 100,
+        "cpu_scheduler_limit": 100,
+    }
+
+
+def test_perf_conditions_pass_on_ac_without_warnings() -> None:
+    from quantgate import cli as cli_module
+
+    cli_module._check_perf_conditions("q4_k_m", _power(), _power())
+
+
+@pytest.mark.parametrize(
+    ("before", "after", "message"),
+    [
+        (_power("Battery Power"), _power(), "measured on 'Battery Power' power (before)"),
+        (_power(), _power("Battery Power"), "measured on 'Battery Power' power (after)"),
+        (_power(thermal=True), _power(), "thermal or performance warning (before)"),
+    ],
+)
+def test_perf_conditions_refuse_battery_or_warnings(
+    before: dict, after: dict, message: str
+) -> None:
+    from quantgate import cli as cli_module
+
+    with pytest.raises(cli_module.CliError, match=message.replace("(", r"\(").replace(")", r"\)")):
+        cli_module._check_perf_conditions("q4_k_m", before, after)
+
+
+def test_perf_conditions_are_not_checked_where_pmset_is_absent() -> None:
+    from quantgate import cli as cli_module
+
+    cli_module._check_perf_conditions(
+        "q4_k_m", _power(None, available=False), _power(None, available=False)
+    )
