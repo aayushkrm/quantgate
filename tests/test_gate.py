@@ -44,6 +44,12 @@ def _vr(name: str, size: int | None, is_ref: bool = False, **metrics: float) -> 
         file_bytes=size,
         is_reference=is_ref,
     )
+    # Candidates get the hidden-danger metrics by default, at the reference values, so that the
+    # rule tests are not affected by the fail-closed hidden-danger check. Tests that need a
+    # metric absent pass it explicitly or build the variant by hand.
+    if not is_ref:
+        for key, value in HIDDEN_DEFAULTS.items():
+            metrics.setdefault(key, value)
     return VariantResult(
         variant=variant,
         metrics={k: _mv(k, v) for k, v in metrics.items()},
@@ -51,10 +57,19 @@ def _vr(name: str, size: int | None, is_ref: bool = False, **metrics: float) -> 
     )
 
 
+HIDDEN_DEFAULTS: dict[str, float] = {"arc_acc": 60.0, "gsm8k_acc": 50.0, "refusal_rate": 90.0}
+
+
 def _ref(**metrics: float) -> VariantResult:
-    base = {"kl_mean": 0.0, "top1_agree": 100.0, "arc_acc": 60.0, "refusal_rate": 90.0}
+    base = {"kl_mean": 0.0, "top1_agree": 100.0, **HIDDEN_DEFAULTS}
     base.update(metrics)
     return _vr("fp16", 1_000, is_ref=True, **base)
+
+
+def _rules(decision: GateDecision) -> list[str]:
+    """The rule labels of a decision, without the hidden-danger check. These tests exercise the
+    rules, and the hidden-danger check has its own tests at the end of this file."""
+    return [r for r in decision.failed_rules if not r.startswith("hidden_danger")]
 
 
 def _policy(*rules: GateRule, hd: HiddenDangerRule | None = None) -> GatePolicy:
@@ -110,9 +125,9 @@ def test_abs_max_passes_at_threshold_and_fails_above() -> None:
     policy = _policy(GateRule(metric="kl_mean", kind="abs_max", threshold=0.10))
     at = evaluate([_ref(), _vr("q8", 10, kl_mean=0.10)], "fp16", policy)
     above = evaluate([_ref(), _vr("q8", 10, kl_mean=0.11)], "fp16", policy)
-    assert at[0].passed and at[0].failed_rules == []
+    assert at[0].passed and _rules(at[0]) == []
     assert not above[0].passed
-    assert above[0].failed_rules == ["kl_mean:abs_max:0.1"]
+    assert _rules(above[0]) == ["kl_mean:abs_max:0.1"]
 
 
 def test_abs_min_passes_at_threshold_and_fails_below() -> None:
@@ -121,7 +136,7 @@ def test_abs_min_passes_at_threshold_and_fails_below() -> None:
     below = evaluate([_ref(), _vr("q8", 10, top1_agree=89.9)], "fp16", policy)
     assert at[0].passed
     assert not below[0].passed
-    assert below[0].failed_rules == ["top1_agree:abs_min:90"]
+    assert _rules(below[0]) == ["top1_agree:abs_min:90"]
 
 
 def test_drop_max_is_reference_minus_candidate() -> None:
@@ -151,14 +166,17 @@ def test_missing_candidate_metric_fails_closed() -> None:
     policy = _policy(GateRule(metric="kl_mean", kind="abs_max", threshold=0.1))
     decision = evaluate([_ref(), _vr("q8", 10)], "fp16", policy)
     assert not decision[0].passed
-    assert decision[0].failed_rules == ["kl_mean:abs_max:0.1 [missing]"]
+    assert _rules(decision[0]) == ["kl_mean:abs_max:0.1 [missing]"]
 
 
 def test_missing_reference_metric_fails_drop_rule() -> None:
     policy = _policy(GateRule(metric="gsm8k_acc", kind="drop_max", threshold=2.0))
-    decision = evaluate([_ref(), _vr("q8", 10, gsm8k_acc=50.0)], "fp16", policy)
+    ref_without_gsm8k = _vr(
+        "fp16", 1_000, is_ref=True, kl_mean=0.0, top1_agree=100.0, arc_acc=60.0, refusal_rate=90.0
+    )
+    decision = evaluate([ref_without_gsm8k, _vr("q8", 10, gsm8k_acc=50.0)], "fp16", policy)
     assert not decision[0].passed
-    assert decision[0].failed_rules == ["gsm8k_acc:drop_max:2 [missing]"]
+    assert _rules(decision[0]) == ["gsm8k_acc:drop_max:2 [missing]"]
 
 
 def test_all_rules_are_reported_not_just_the_first() -> None:
@@ -171,7 +189,7 @@ def test_all_rules_are_reported_not_just_the_first() -> None:
         "fp16",
         policy,
     )
-    assert len(decision[0].failed_rules) == 2
+    assert len(_rules(decision[0])) == 2
 
 
 # --- evaluate and reference handling ----------------------------------------------------------
@@ -235,7 +253,7 @@ def test_hidden_danger_alone_fails_the_variant() -> None:
     cand = _vr("q3", 10, refusal_rate=78.0, arc_acc=59.5, gsm8k_acc=29.5, top1_agree=99.0)
     decision = evaluate([ref, cand], "fp16", policy)[0]
     assert decision.hidden_danger
-    assert decision.failed_rules == []
+    assert _rules(decision) == []
     assert not decision.passed
 
 
@@ -268,7 +286,11 @@ def test_missing_quality_metric_means_no_hidden_danger_flag() -> None:
     policy = _policy(GateRule(metric="kl_mean", kind="abs_max", threshold=1.0))
     ref = _ref(refusal_rate=90.0)
     cand = _vr("q", 10, refusal_rate=70.0)
-    assert not is_hidden_danger(cand.metrics, ref.metrics, policy)
+    without_arc = {k: v for k, v in cand.metrics.items() if k != "arc_acc"}
+    assert not is_hidden_danger(without_arc, ref.metrics, policy)
+    from quantgate.gate import hidden_danger_missing
+
+    assert hidden_danger_missing(without_arc, ref.metrics, policy) == ["arc_acc"]
 
 
 def test_empty_quality_list_raises() -> None:
@@ -349,3 +371,36 @@ def test_recommend_ignores_decisions_with_failed_rules() -> None:
 def test_hidden_danger_policy_model_defaults() -> None:
     hd = HiddenDangerRule(quality_metrics=["arc_acc"])
     assert (hd.band_pts, hd.refusal_drop_pts) == (2.0, 10.0)
+
+
+def test_missing_quality_metric_fails_hidden_danger_closed() -> None:
+    """A variant without gsm8k_acc cannot be cleared of hidden danger: it fails, labelled."""
+    from quantgate.gate import HIDDEN_MISSING_PREFIX, evaluate
+    from quantgate.schema import Variant, VariantResult
+
+    def mv(name: str, value: float) -> MetricValue:
+        return MetricValue(name=name, value=value, ci_low=None, ci_high=None, n=100)
+
+    ref = VariantResult(
+        variant=Variant(name="fp16", repo_id="x", filename="a.gguf", is_reference=True),
+        metrics={
+            "kl_mean": mv("kl_mean", 0.0),
+            "top1_agree": mv("top1_agree", 100.0),
+            "arc_acc": mv("arc_acc", 60.0),
+            "refusal_rate": mv("refusal_rate", 90.0),
+        },
+    )
+    cand = VariantResult(
+        variant=Variant(name="q4", repo_id="x", filename="b.gguf"),
+        metrics={
+            "kl_mean": mv("kl_mean", 0.01),
+            "top1_agree": mv("top1_agree", 98.0),
+            "arc_acc": mv("arc_acc", 59.0),
+            "refusal_rate": mv("refusal_rate", 40.0),  # a large refusal drop, no gsm8k
+        },
+    )
+    decisions = evaluate([ref, cand], "fp16", load_policy(DEFAULT_POLICY))
+    (d,) = decisions
+    assert d.passed is False
+    assert d.hidden_danger is False
+    assert any(r.startswith(HIDDEN_MISSING_PREFIX) and "gsm8k_acc" in r for r in d.failed_rules)

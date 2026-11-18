@@ -11,7 +11,9 @@ Rule semantics (values are read from MetricValue.value):
              candidate, for every metric, including refusal_rate)
 
 A rule whose metric is missing from the candidate, or from the reference for drop_max, fails
-closed and is reported with the suffix "[missing]". A GateDecision passes only when no rule
+closed and is reported with the suffix "[missing]". The hidden-danger check fails closed in the
+same way: when a metric it needs is absent it is recorded as "hidden_danger [missing: ...]", and the
+variant fails. It is never reported as a clean result. A GateDecision passes only when no rule
 fails and the variant is not flagged as hidden danger.
 """
 
@@ -131,6 +133,28 @@ def is_hidden_danger(
     return ref_refusal.value - cand_refusal.value >= hd.refusal_drop_pts - _EPS
 
 
+HIDDEN_MISSING_PREFIX = "hidden_danger [missing"
+
+
+def hidden_danger_missing(
+    candidate: dict[str, MetricValue],
+    reference: dict[str, MetricValue],
+    policy: GatePolicy,
+) -> list[str]:
+    """Names of the metrics the hidden-danger check needs that are absent. Empty when computable.
+
+    The check needs every quality metric and the refusal rate, in both the candidate and the
+    reference. An absent metric means the check was not run, which is not the same as a clean
+    result.
+    """
+    needed = [*policy.hidden_danger.quality_metrics, REFUSAL_METRIC]
+    missing: list[str] = []
+    for name in needed:
+        if name not in candidate or name not in reference:
+            missing.append(name)
+    return missing
+
+
 def evaluate(
     results: list[VariantResult],
     reference: str,
@@ -155,7 +179,13 @@ def evaluate(
         if vr.variant.name == reference:
             continue
         failed = _failed_rules(policy, vr.metrics, ref_metrics)
-        hidden = is_hidden_danger(vr.metrics, ref_metrics, policy)
+        missing = hidden_danger_missing(vr.metrics, ref_metrics, policy)
+        if missing:
+            # Fail closed: the flag was not computed, so the gate cannot pass.
+            failed.append(f"{HIDDEN_MISSING_PREFIX}: {', '.join(missing)}]")
+            hidden = False
+        else:
+            hidden = is_hidden_danger(vr.metrics, ref_metrics, policy)
         decisions.append(
             GateDecision(
                 variant=vr.variant.name,

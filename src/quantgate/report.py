@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from quantgate.gate import gate_label
+from quantgate.gate import HIDDEN_MISSING_PREFIX, gate_label
 from quantgate.schema import GateDecision, MetricValue, QuantReport, VariantResult
 
 QUALITY_METRICS: tuple[str, ...] = (
@@ -160,6 +160,15 @@ GATE_NOTE = (
 )
 
 
+def _hidden_cell(d: GateDecision) -> str:
+    """Hidden-danger cell: YES, no, or 'not evaluated' when a needed metric was absent."""
+    if any(r.startswith(HIDDEN_MISSING_PREFIX) for r in d.failed_rules):
+        return "NOT EVALUATED (a metric it needs is missing)"
+    if d.hidden_danger:
+        return "YES (quality within band, refusal drop over threshold)"
+    return "no"
+
+
 def _gate_table(report: QuantReport) -> Table:
     """Gate verdict per non-reference variant, with the failing rules and the hidden-danger flag
     in separate columns, so that a hidden-danger failure is visible as such."""
@@ -169,7 +178,7 @@ def _gate_table(report: QuantReport) -> Table:
             d.variant,
             gate_label(d),
             ", ".join(d.failed_rules) if d.failed_rules else "none",
-            "YES (quality within band, refusal drop over threshold)" if d.hidden_danger else "no",
+            _hidden_cell(d),
         ]
         for d in report.decisions
     ]
