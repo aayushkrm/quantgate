@@ -21,9 +21,9 @@ from quantgate import __version__ as quantgate_version
 from quantgate.backend import FakeBackend, LlamaCppBackend
 from quantgate.data import load_arc_easy, load_gsm8k, load_wikitext_passages, select_subset
 from quantgate.envinfo import collect as collect_envinfo
-from quantgate.evals.gsm8k import run_gsm8k
+from quantgate.evals.gsm8k import run_gsm8k, score_gsm8k
 from quantgate.evals.kl import run_kl
-from quantgate.evals.mcq import McqItem, run_mcq
+from quantgate.evals.mcq import McqItem, run_mcq, score_mcq
 from quantgate.evals.refusal import (
     PromptSet,
     default_raw_path,
@@ -405,12 +405,25 @@ def _run_suite(
         if "arc" not in cache:
             cache["arc"] = _take(load_arc_easy(), cfg.arc.n, cfg.seed)
         arc_items: list[McqItem] = cache["arc"]
-        return [run_mcq(backend, arc_items)], None
+        arc_result = score_mcq(backend, arc_items)
+        # Per-item correctness lets the gate run a paired test (review Q2). Items keep their ids.
+        arc_extra = {
+            "item_ids": {"arc_acc": [item.item_id for item in arc_items]},
+            "per_item": {"arc_acc": [int(c) for c in arc_result.correct]},
+        }
+        return [arc_result.metric], arc_extra
     if name == "gsm8k":
         if "gsm8k" not in cache:
             cache["gsm8k"] = _take(load_gsm8k(), cfg.gsm8k.n, cfg.seed)
         pairs: list[tuple[str, str]] = cache["gsm8k"]
-        return [run_gsm8k(backend, pairs, cfg.gsm8k.max_tokens, cfg.seed)], None
+        gsm_result = score_gsm8k(backend, pairs, cfg.gsm8k.max_tokens, cfg.seed)
+        # GSM8K items have no ids in the committed subset, so their position in the subset is
+        # the id. The subset order is fixed by the seed, and the fingerprint covers it.
+        gsm_extra = {
+            "item_ids": {"gsm8k_acc": [str(i) for i in range(len(pairs))]},
+            "per_item": {"gsm8k_acc": [int(c) for c in gsm_result.correct]},
+        }
+        return [gsm_result.metric], gsm_extra
     if name == "refusal":
         if "harmful" not in cache:
             cache["harmful"] = load_harmful_prompts(n=cfg.refusal.n_harmful, seed=cfg.seed)
@@ -618,6 +631,8 @@ def _assemble(
     for registry_variant in registry.variants:
         v = (pinned or {}).get(registry_variant.name, registry_variant)
         metrics: dict[str, MetricValue] = {}
+        item_ids: dict[str, list[str]] = {}
+        per_item: dict[str, list[int]] = {}
         found = False
         for s in suites:
             path = out / v.name / f"{s}.json"
@@ -628,6 +643,8 @@ def _assemble(
             for m in data["metrics"]:
                 mv = MetricValue.model_validate(m)
                 metrics[mv.name] = mv
+            item_ids.update(data.get("item_ids", {}))
+            per_item.update(data.get("per_item", {}))
         if not found:
             continue
         variant = v
@@ -638,6 +655,8 @@ def _assemble(
             variant=variant,
             metrics=metrics,
             raw_path=_portable(raw_dir) if raw_dir.is_dir() else None,
+            item_ids=item_ids,
+            per_item=per_item,
         )
         (out / v.name).mkdir(parents=True, exist_ok=True)
         (out / v.name / "variant.json").write_text(
