@@ -1,0 +1,228 @@
+{
+  "$defs": {
+    "GateDecision": {
+      "description": "Gate outcome for one variant. variant is the variant name.",
+      "properties": {
+        "failed_rules": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Failed Rules",
+          "type": "array"
+        },
+        "hidden_danger": {
+          "title": "Hidden Danger",
+          "type": "boolean"
+        },
+        "passed": {
+          "title": "Passed",
+          "type": "boolean"
+        },
+        "variant": {
+          "title": "Variant",
+          "type": "string"
+        }
+      },
+      "required": [
+        "variant",
+        "passed",
+        "failed_rules",
+        "hidden_danger"
+      ],
+      "title": "GateDecision",
+      "type": "object"
+    },
+    "MetricValue": {
+      "description": "One named metric with an optional 95% CI and the sample size it was computed on.",
+      "properties": {
+        "ci_high": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ci High"
+        },
+        "ci_low": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ci Low"
+        },
+        "n": {
+          "title": "N",
+          "type": "integer"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "name",
+        "value",
+        "n"
+      ],
+      "title": "MetricValue",
+      "type": "object"
+    },
+    "Variant": {
+      "description": "One quantization level of one model, as listed in configs/variants.yaml.",
+      "properties": {
+        "file_bytes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "File Bytes"
+        },
+        "filename": {
+          "title": "Filename",
+          "type": "string"
+        },
+        "is_reference": {
+          "default": false,
+          "title": "Is Reference",
+          "type": "boolean"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "repo_id": {
+          "title": "Repo Id",
+          "type": "string"
+        },
+        "sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sha256"
+        }
+      },
+      "required": [
+        "name",
+        "repo_id",
+        "filename"
+      ],
+      "title": "Variant",
+      "type": "object"
+    },
+    "VariantResult": {
+      "description": "All metrics for one variant. raw_path points to local, gitignored raw generations.",
+      "properties": {
+        "metrics": {
+          "additionalProperties": {
+            "$ref": "#/$defs/MetricValue"
+          },
+          "title": "Metrics",
+          "type": "object"
+        },
+        "raw_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Raw Path"
+        },
+        "variant": {
+          "$ref": "#/$defs/Variant"
+        }
+      },
+      "required": [
+        "variant",
+        "metrics"
+      ],
+      "title": "VariantResult",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Top-level report written to results/report.json and read by `quantgate gate`.",
+  "properties": {
+    "decisions": {
+      "items": {
+        "$ref": "#/$defs/GateDecision"
+      },
+      "title": "Decisions",
+      "type": "array"
+    },
+    "env_info": {
+      "additionalProperties": true,
+      "title": "Env Info",
+      "type": "object"
+    },
+    "model_family": {
+      "title": "Model Family",
+      "type": "string"
+    },
+    "recommended": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Recommended"
+    },
+    "reference": {
+      "title": "Reference",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1",
+      "default": "1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "variants": {
+      "items": {
+        "$ref": "#/$defs/VariantResult"
+      },
+      "title": "Variants",
+      "type": "array"
+    }
+  },
+  "required": [
+    "model_family",
+    "reference",
+    "variants",
+    "decisions",
+    "env_info"
+  ],
+  "title": "QuantReport",
+  "type": "object"
+}

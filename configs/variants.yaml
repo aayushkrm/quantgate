@@ -32,3 +32,34 @@ variants:
   - name: q2_k
     repo_id: Qwen/Qwen2.5-0.5B-Instruct-GGUF
     filename: qwen2.5-0.5b-instruct-q2_k.gguf
+
+# Eval suite settings, read by `quantgate eval` (src/quantgate/cli.py load_suite_config).
+# Keys match SuiteConfig in src/quantgate/schema.py:
+#   kl       n_passages: wikitext passages; ctx: tokens per passage
+#   arc      n: ARC-Easy items
+#   gsm8k    n: GSM8K items; max_tokens: generation budget
+#   refusal  n_harmful / n_benign: prompts per set; max_tokens: generation budget
+#   perf     prompt_tokens, gen_tokens, warmup and repeats per perf run; threads for llama.cpp
+#   seed     seed for subset selection and generation
+# These values are pre-registered defaults from DECISION.md §2.2. Change them only with a
+# deviation entry in docs/deviations.md.
+suite:
+  seed: 0
+  kl:
+    n_passages: 50
+    ctx: 256
+  arc:
+    n: 300
+  gsm8k:
+    n: 100
+    max_tokens: 256
+  refusal:
+    n_harmful: 100
+    n_benign: 50
+    max_tokens: 64
+  perf:
+    prompt_tokens: 512
+    gen_tokens: 128
+    warmup: 2
+    repeats: 5
+    threads: 4

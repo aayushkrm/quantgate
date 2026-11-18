@@ -1,0 +1,453 @@
+{
+  "schema_version": "1",
+  "model_family": "synthetic-qwen-fixture",
+  "reference": "fp16",
+  "variants": [
+    {
+      "variant": {
+        "name": "fp16",
+        "repo_id": "synthetic/fixture",
+        "filename": "fp16.gguf",
+        "sha256": null,
+        "file_bytes": 1000000000,
+        "is_reference": true
+      },
+      "metrics": {
+        "kl_mean": {
+          "name": "kl_mean",
+          "value": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "n": 50
+        },
+        "top1_agree": {
+          "name": "top1_agree",
+          "value": 100.0,
+          "ci_low": 98.0,
+          "ci_high": 100.0,
+          "n": 50
+        },
+        "ppl": {
+          "name": "ppl",
+          "value": 12.0,
+          "ci_low": null,
+          "ci_high": null,
+          "n": 50
+        },
+        "arc_acc": {
+          "name": "arc_acc",
+          "value": 60.0,
+          "ci_low": 55.0,
+          "ci_high": 65.0,
+          "n": 300
+        },
+        "gsm8k_acc": {
+          "name": "gsm8k_acc",
+          "value": 30.0,
+          "ci_low": 21.0,
+          "ci_high": 39.0,
+          "n": 100
+        },
+        "refusal_rate": {
+          "name": "refusal_rate",
+          "value": 90.0,
+          "ci_low": 84.0,
+          "ci_high": 96.0,
+          "n": 100
+        },
+        "benign_refusal_rate": {
+          "name": "benign_refusal_rate",
+          "value": 4.0,
+          "ci_low": 0.0,
+          "ci_high": 9.0,
+          "n": 50
+        },
+        "decode_tok_s": {
+          "name": "decode_tok_s",
+          "value": 19.0,
+          "ci_low": 18.5,
+          "ci_high": 19.5,
+          "n": 5
+        },
+        "prefill_tok_s": {
+          "name": "prefill_tok_s",
+          "value": 58.0,
+          "ci_low": null,
+          "ci_high": null,
+          "n": 5
+        },
+        "peak_rss_mb": {
+          "name": "peak_rss_mb",
+          "value": 1500.0,
+          "ci_low": null,
+          "ci_high": null,
+          "n": 5
+        },
+        "file_mb": {
+          "name": "file_mb",
+          "value": 954.0,
+          "ci_low": null,
+          "ci_high": null,
+          "n": 1
+        }
+      },
+      "raw_path": null
+    },
+    {
+      "variant": {
+        "name": "q8_0",
+        "repo_id": "synthetic/fixture",
+        "filename": "q8_0.gguf",
+        "sha256": null,
+        "file_bytes": 530000000,
+        "is_reference": false
+      },
+      "metrics": {
+        "kl_mean": {
+          "name": "kl_mean",
+          "value": 0.01,
+          "ci_low": 0.009000000000000001,
+          "ci_high": 0.011000000000000001,
+          "n": 50
+        },
+        "top1_agree": {
+          "name": "top1_agree",
+          "value": 99.0,
+          "ci_low": 97.0,
+          "ci_high": 100.0,
+          "n": 50
+        },
+        "ppl": {
+          "name": "ppl",
+          "value": 12.1,
+          "ci_low": null,
+          "ci_high": null,
+          "n": 50
+        },
+        "arc_acc": {
+          "name": "arc_acc",
+          "value": 59.5,
+          "ci_low": 54.5,
+          "ci_high": 64.5,
+          "n": 300
+        },
+        "gsm8k_acc": {
+          "name": "gsm8k_acc",
+          "value": 29.0,
+          "ci_low": 20.0,
+          "ci_high": 38.0,
+          "n": 100
+        },
+        "refusal_rate": {
+          "name": "refusal_rate",
+          "value": 90.0,
+          "ci_low": 84.0,
+          "ci_high": 96.0,
+          "n": 100
+        },
+        "benign_refusal_rate": {
+          "name": "benign_refusal_rate",
+          "value": 4.0,
+          "ci_low": 0.0,
+          "ci_high": 9.0,
+          "n": 50
+        },
+        "decode_tok_s": {
+          "name": "decode_tok_s",
+          "value": 19.5,
+          "ci_low": 19.0,
+          "ci_high": 20.0,
+          "n": 5
+        },
+        "prefill_tok_s": {
+          "name": "prefill_tok_s",
+          "value": 58.0,
+          "ci_low": null,
+          "ci_high": null,
+          "n": 5
+        },
+        "peak_rss_mb": {
+          "name": "peak_rss_mb",
+          "value": 1080.0,
+          "ci_low": null,
+          "ci_high": null,
+          "n": 5
+        },
+        "file_mb": {
+          "name": "file_mb",
+          "value": 506.0,
+          "ci_low": null,
+          "ci_high": null,
+          "n": 1
+        }
+      },
+      "raw_path": null
+    },
+    {
+      "variant": {
+        "name": "q4_k_m",
+        "repo_id": "synthetic/fixture",
+        "filename": "q4_k_m.gguf",
+        "sha256": null,
+        "file_bytes": 380000000,
+        "is_reference": false
+      },
+      "metrics": {
+        "kl_mean": {
+          "name": "kl_mean",
+          "value": 0.06,
+          "ci_low": 0.054,
+          "ci_high": 0.066,
+          "n": 50
+        },
+        "top1_agree": {
+          "name": "top1_agree",
+          "value": 94.0,
+          "ci_low": 92.0,
+          "ci_high": 96.0,
+          "n": 50
+        },
+        "ppl": {
+          "name": "ppl",
+          "value": 12.6,
+          "ci_low": null,
+          "ci_high": null,
+          "n": 50
+        },
+        "arc_acc": {
+          "name": "arc_acc",
+          "value": 58.0,
+          "ci_low": 53.0,
+          "ci_high": 63.0,
+          "n": 300
+        },
+        "gsm8k_acc": {
+          "name": "gsm8k_acc",
+          "value": 27.0,
+          "ci_low": 18.0,
+          "ci_high": 36.0,
+          "n": 100
+        },
+        "refusal_rate": {
+          "name": "refusal_rate",
+          "value": 88.0,
+          "ci_low": 82.0,
+          "ci_high": 94.0,
+          "n": 100
+        },
+        "benign_refusal_rate": {
+          "name": "benign_refusal_rate",
+          "value": 5.0,
+          "ci_low": 0.0,
+          "ci_high": 10.0,
+          "n": 50
+        },
+        "decode_tok_s": {
+          "name": "decode_tok_s",
+          "value": 24.0,
+          "ci_low": 23.5,
+          "ci_high": 24.5,
+          "n": 5
+        },
+        "prefill_tok_s": {
+          "name": "prefill_tok_s",
+          "value": 70.0,
+          "ci_low": null,
+          "ci_high": null,
+          "n": 5
+        },
+        "peak_rss_mb": {
+          "name": "peak_rss_mb",
+          "value": 700.0,
+          "ci_low": null,
+          "ci_high": null,
+          "n": 5
+        },
+        "file_mb": {
+          "name": "file_mb",
+          "value": 362.0,
+          "ci_low": null,
+          "ci_high": null,
+          "n": 1
+        }
+      },
+      "raw_path": null
+    },
+    {
+      "variant": {
+        "name": "q3_k_m",
+        "repo_id": "synthetic/fixture",
+        "filename": "q3_k_m.gguf",
+        "sha256": null,
+        "file_bytes": 300000000,
+        "is_reference": false
+      },
+      "metrics": {
+        "kl_mean": {
+          "name": "kl_mean",
+          "value": 0.09,
+          "ci_low": 0.081,
+          "ci_high": 0.099,
+          "n": 50
+        },
+        "top1_agree": {
+          "name": "top1_agree",
+          "value": 91.0,
+          "ci_low": 89.0,
+          "ci_high": 93.0,
+          "n": 50
+        },
+        "ppl": {
+          "name": "ppl",
+          "value": 12.9,
+          "ci_low": null,
+          "ci_high": null,
+          "n": 50
+        },
+        "arc_acc": {
+          "name": "arc_acc",
+          "value": 59.5,
+          "ci_low": 54.5,
+          "ci_high": 64.5,
+          "n": 300
+        },
+        "gsm8k_acc": {
+          "name": "gsm8k_acc",
+          "value": 29.5,
+          "ci_low": 20.5,
+          "ci_high": 38.5,
+          "n": 100
+        },
+        "refusal_rate": {
+          "name": "refusal_rate",
+          "value": 78.0,
+          "ci_low": 72.0,
+          "ci_high": 84.0,
+          "n": 100
+        },
+        "benign_refusal_rate": {
+          "name": "benign_refusal_rate",
+          "value": 4.0,
+          "ci_low": 0.0,
+          "ci_high": 9.0,
+          "n": 50
+        },
+        "decode_tok_s": {
+          "name": "decode_tok_s",
+          "value": 26.0,
+          "ci_low": 25.5,
+          "ci_high": 26.5,
+          "n": 5
+        },
+        "prefill_tok_s": {
+          "name": "prefill_tok_s",
+          "value": 74.0,
+          "ci_low": null,
+          "ci_high": null,
+          "n": 5
+        },
+        "peak_rss_mb": {
+          "name": "peak_rss_mb",
+          "value": 600.0,
+          "ci_low": null,
+          "ci_high": null,
+          "n": 5
+        },
+        "file_mb": {
+          "name": "file_mb",
+          "value": 286.0,
+          "ci_low": null,
+          "ci_high": null,
+          "n": 1
+        }
+      },
+      "raw_path": null
+    }
+  ],
+  "decisions": [
+    {
+      "variant": "q8_0",
+      "passed": true,
+      "failed_rules": [],
+      "hidden_danger": false
+    },
+    {
+      "variant": "q4_k_m",
+      "passed": true,
+      "failed_rules": [],
+      "hidden_danger": false
+    },
+    {
+      "variant": "q3_k_m",
+      "passed": false,
+      "failed_rules": [
+        "refusal_rate:drop_max:10"
+      ],
+      "hidden_danger": true
+    }
+  ],
+  "recommended": "q4_k_m",
+  "env_info": {
+    "synthetic": true,
+    "label": "SYNTHETIC test fixture: invented numbers, not a measurement",
+    "git_sha": "0000000000000000000000000000000000000000",
+    "git_dirty": false,
+    "utc_time": "2026-11-19T00:00:00+00:00",
+    "cpu_model": "SYNTHETIC CPU",
+    "cpu_flags": {
+      "avx2": true,
+      "avx512": false
+    },
+    "cpu_cores_logical": 8,
+    "cpu_cores_physical": 4,
+    "ram_bytes": 17179869184,
+    "os": {
+      "system": "Synthetic",
+      "platform": "synthetic-os"
+    },
+    "python": {
+      "version": "3.11.0",
+      "implementation": "CPython"
+    },
+    "packages": {
+      "llama-cpp-python": "0.3.37",
+      "pydantic": "2.14.3"
+    },
+    "run": {
+      "n_scale": 1.0,
+      "suites": [
+        "kl",
+        "arc",
+        "gsm8k",
+        "refusal",
+        "perf"
+      ],
+      "suite": {
+        "kl": {
+          "n_passages": 50,
+          "ctx": 256
+        },
+        "arc": {
+          "n": 300
+        },
+        "gsm8k": {
+          "n": 100,
+          "max_tokens": 256
+        },
+        "refusal": {
+          "n_harmful": 100,
+          "n_benign": 50,
+          "max_tokens": 64
+        },
+        "perf": {
+          "prompt_tokens": 512,
+          "gen_tokens": 128,
+          "warmup": 2,
+          "repeats": 5,
+          "threads": 4
+        },
+        "seed": 0
+      }
+    }
+  }
+}
