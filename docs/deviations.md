@@ -105,6 +105,10 @@ reader can see what the pre-registration in `docs/prereg.md` was written against
     `logits_all=True` with `n_ctx=512` (passage 256 plus margin). ARC is the exception: its scoring
     (`score_continuations`) needs logits, so ARC runs on the KL backend. Its prompts are at most
     132 tokens, so they fit. The suite files record a count of truncated GSM8K generations.
+    The method version moves to 3 (fingerprints change), and the smoke check was 1 variant at
+    0.03 scale: truncated GSM8K generations fell from 3 of 3 at 256 to 1 of 3 at 384, and decode
+    p50 stayed within run-to-run noise (27.1 to 28.7 tok/s). Accuracy on that sample is still 0 of 3,
+    so the budget change does not by itself fix GSM8K accuracy.
 
 ### Open items
 
