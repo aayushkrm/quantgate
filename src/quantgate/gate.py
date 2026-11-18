@@ -38,6 +38,21 @@ def rule_label(rule: GateRule) -> str:
     return f"{rule.metric}:{rule.kind}:{rule.threshold:g}"
 
 
+def gate_label(decision: GateDecision) -> str:
+    """Verdict text that says why a variant failed, so a hidden-danger failure is never hidden.
+
+    PASS means every rule passes and the variant is not a hidden-danger row. A hidden-danger
+    row fails even when every rule passes.
+    """
+    if decision.passed:
+        return "PASS"
+    if decision.hidden_danger and decision.failed_rules:
+        return "FAIL (rules and hidden danger)"
+    if decision.hidden_danger:
+        return "FAIL (hidden danger)"
+    return "FAIL (rules)"
+
+
 def load_policy(path: Path) -> GatePolicy:
     """Parse and validate a gate policy YAML file.
 

@@ -93,7 +93,7 @@ def test_markdown_has_tables_gate_and_environment(mixed: QuantReport) -> None:
     assert "> **SYNTHETIC.**" in text
     assert "## Quality metrics" in text
     assert "## Speed and size" in text
-    assert "| q2_k | FAIL | no |" in text
+    assert "| q2_k | FAIL (rules) | " in text
     assert "Recommended variant: q4_k_m" in text
     assert "## Environment" in text
     assert "SYNTHETIC CPU" in text
@@ -248,3 +248,30 @@ def test_committed_schema_file_is_canonically_formatted() -> None:
         **QuantReport.model_json_schema(),
     }
     assert text == json.dumps(generated, indent=2, sort_keys=True) + "\n"
+
+
+def test_hidden_danger_fails_gate_even_with_no_failed_rules(hidden: QuantReport) -> None:
+    from quantgate.gate import gate_label
+
+    flagged = [d for d in hidden.decisions if d.hidden_danger]
+    assert flagged, "fixture must contain a hidden-danger row"
+    for d in flagged:
+        if not d.failed_rules:
+            assert gate_label(d) == "FAIL (hidden danger)"
+            assert not d.passed
+    text = render_markdown(hidden)
+    assert "FAIL (hidden danger)" in text or "FAIL (rules and hidden danger)" in text
+    assert "Gate is PASS only when every rule passes" in text
+
+
+def test_gate_label_covers_every_combination() -> None:
+    from quantgate.gate import gate_label
+    from quantgate.schema import GateDecision
+
+    def dec(passed: bool, failed: list[str], hd: bool) -> GateDecision:
+        return GateDecision(variant="v", passed=passed, failed_rules=failed, hidden_danger=hd)
+
+    assert gate_label(dec(True, [], False)) == "PASS"
+    assert gate_label(dec(False, ["r"], False)) == "FAIL (rules)"
+    assert gate_label(dec(False, [], True)) == "FAIL (hidden danger)"
+    assert gate_label(dec(False, ["r"], True)) == "FAIL (rules and hidden danger)"

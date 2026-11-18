@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from quantgate.gate import gate_label
 from quantgate.schema import GateDecision, MetricValue, QuantReport, VariantResult
 
 QUALITY_METRICS: tuple[str, ...] = (
@@ -153,15 +154,22 @@ def _perf_table(report: QuantReport) -> Table | None:
     return Table(headers, rows)
 
 
+GATE_NOTE = (
+    "Gate is PASS only when every rule passes and the variant is not a hidden-danger row. "
+    "A hidden-danger row fails the gate even when every rule passes."
+)
+
+
 def _gate_table(report: QuantReport) -> Table:
-    """Gate verdict per non-reference variant."""
-    headers = ["Variant", "Verdict", "Hidden danger", "Failed rules"]
+    """Gate verdict per non-reference variant, with the failing rules and the hidden-danger flag
+    in separate columns, so that a hidden-danger failure is visible as such."""
+    headers = ["Variant", "Gate", "Rules that fail", "Hidden danger"]
     rows = [
         [
             d.variant,
-            "PASS" if d.passed else "FAIL",
-            "YES" if d.hidden_danger else "no",
+            gate_label(d),
             ", ".join(d.failed_rules) if d.failed_rules else "none",
+            "YES (quality within band, refusal drop over threshold)" if d.hidden_danger else "no",
         ]
         for d in report.decisions
     ]
@@ -272,12 +280,14 @@ def render_markdown(report: QuantReport) -> str:
             *_markdown_table(perf),
             "",
         ]
-    out += ["## Gate verdict", "", *_markdown_table(_gate_table(report)), ""]
+    out += ["## Gate verdict", "", GATE_NOTE, "", *_markdown_table(_gate_table(report)), ""]
     flagged = _hidden_danger_names(report)
     out += ["## Hidden-danger rows", ""]
     if flagged:
         out += [
-            f"- {name}: quality within band, refusal drop at or above threshold" for name in flagged
+            f"- {name}: every quality metric within the policy band of the reference, and the "
+            "refusal rate drops by at least the policy threshold. This row FAILS the gate."
+            for name in flagged
         ]
     else:
         out += ["No hidden-danger row under this policy. This is a null result for this sample."]
@@ -315,7 +325,7 @@ def render_readme_block(report: QuantReport, env_link: str = "results/env.json")
             verdict = "reference"
         else:
             d = decisions.get(name)
-            verdict = "n/a" if d is None else ("PASS" if d.passed else "FAIL")
+            verdict = "n/a" if d is None else gate_label(d)
         m = vr.metrics
         compact.rows.append(
             [
@@ -402,6 +412,7 @@ def render_html(report: QuantReport, plot_paths: Sequence[str] = ()) -> str:
         parts.append('<p class="muted">Brackets hold the min and max over repeats. CPU-only.</p>')
         parts.append(_html_table(perf))
     parts.append("<h2>Gate verdict</h2>")
+    parts.append(f'<p class="muted">{html.escape(GATE_NOTE)}</p>')
     parts.append(_html_table(_gate_table(report)))
     flagged = _hidden_danger_names(report)
     parts.append("<h2>Hidden-danger rows</h2>")
