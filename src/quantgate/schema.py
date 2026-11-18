@@ -3,12 +3,16 @@
 These types are a contract shared by every work package. Do not change them in a work
 package. Request a change in the report instead, and wait for orchestrator approval.
 Any change must bump the report ``schema_version`` and be logged in docs/deviations.md.
+
+Schema 2 (2026-11-19, docs/deviations.md entry 13) adds optional fields only: VariantResult.item_ids
+and VariantResult.per_item (per-item correctness for paired gate tests), GateDecision.significance,
+and GatePolicy.inconclusive_fails. Schema 1 reports still load, with those fields empty.
 """
 
 from typing import Any, Literal, Protocol
 
 import numpy as np
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Variant(BaseModel):
@@ -82,11 +86,18 @@ class MetricValue(BaseModel):
 
 
 class VariantResult(BaseModel):
-    """All metrics for one variant. raw_path points to local, gitignored raw generations."""
+    """All metrics for one variant. raw_path points to local, gitignored raw generations.
+
+    item_ids and per_item (schema 2) hold the per-item correctness of the paired-test metrics
+    (arc_acc, gsm8k_acc), aligned by position: per_item[m][i] is 1 or 0 for item_ids[m][i].
+    They are empty for schema 1 reports and for metrics without per-item data.
+    """
 
     variant: Variant
     metrics: dict[str, MetricValue]
     raw_path: str | None = None
+    item_ids: dict[str, list[str]] = Field(default_factory=dict)
+    per_item: dict[str, list[int]] = Field(default_factory=dict)
 
 
 class GateRule(BaseModel):
@@ -116,25 +127,38 @@ class HiddenDangerRule(BaseModel):
 
 
 class GatePolicy(BaseModel):
-    """Full gate policy: a list of rules plus the hidden-danger definition."""
+    """Full gate policy: a list of rules plus the hidden-danger definition.
+
+    inconclusive_fails (schema 2): when True, a rule whose point estimate breaks the threshold
+    fails the variant even if its interval does not exclude the threshold. It is labelled
+    "not distinguishable at this n". When False, such a rule is listed but does not fail the
+    variant. Significant violations always fail. The default keeps the pre-registered decisions.
+    """
 
     rules: list[GateRule]
     hidden_danger: HiddenDangerRule
+    inconclusive_fails: bool = True
 
 
 class GateDecision(BaseModel):
-    """Gate outcome for one variant. variant is the variant name."""
+    """Gate outcome for one variant. variant is the variant name.
+
+    significance (schema 2) maps each rule label to how its violation was judged: basis (paired
+    bootstrap, Wilson bounds, metric CI or none), the 95% interval of the difference or metric,
+    and the verdict (significant, not_distinguishable, pass or unavailable).
+    """
 
     variant: str
     passed: bool
     failed_rules: list[str]
     hidden_danger: bool
+    significance: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
 
 class QuantReport(BaseModel):
     """Top-level report written to results/report.json and read by `quantgate gate`."""
 
-    schema_version: Literal["1"] = "1"
+    schema_version: Literal["1", "2"] = "2"
     model_family: str
     reference: str
     variants: list[VariantResult]

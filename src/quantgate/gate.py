@@ -18,7 +18,9 @@ fails and the variant is not flagged as hidden danger.
 """
 
 from pathlib import Path
+from typing import Any
 
+import numpy as np
 import yaml
 
 from quantgate.schema import (
@@ -40,19 +42,40 @@ def rule_label(rule: GateRule) -> str:
     return f"{rule.metric}:{rule.kind}:{rule.threshold:g}"
 
 
-def gate_label(decision: GateDecision) -> str:
-    """Verdict text that says why a variant failed, so a hidden-danger failure is never hidden.
+def _verdicts_for(decision: GateDecision, labels: list[str]) -> list[str]:
+    """Verdict strings for the given rule labels, from the decision's significance record."""
+    return [str(decision.significance.get(label, {}).get("verdict", "")) for label in labels]
 
-    PASS means every rule passes and the variant is not a hidden-danger row. A hidden-danger
-    row fails even when every rule passes.
+
+def gate_label(decision: GateDecision) -> str:
+    """Verdict text that says why a variant passed or failed (review Q2, Q5).
+
+    PASS means every blocking rule passes and the variant is not a hidden-danger row. A hidden-
+    danger row fails even when every rule passes. A failing rule whose interval includes its
+    threshold is labelled "not distinguishable at this n"; one whose interval excludes it is
+    "significant". A rule that cannot be evaluated (missing metric) is labelled as such.
     """
+    rule_labels = [r for r in decision.failed_rules if not r.startswith("hidden_danger")]
     if decision.passed:
+        inconclusive = [
+            label
+            for label, v in zip(rule_labels, _verdicts_for(decision, rule_labels), strict=True)
+            if v == VERDICT_INCONCLUSIVE
+        ]
+        if inconclusive:
+            return "PASS (not distinguishable at this n: " + ", ".join(inconclusive) + ")"
         return "PASS"
-    if decision.hidden_danger and decision.failed_rules:
-        return "FAIL (rules and hidden danger)"
-    if decision.hidden_danger:
+    verdicts = _verdicts_for(decision, rule_labels)
+    if not rule_labels and decision.hidden_danger:
         return "FAIL (hidden danger)"
-    return "FAIL (rules)"
+    rules_text = "rules"
+    if verdicts and all(v == VERDICT_INCONCLUSIVE for v in verdicts):
+        rules_text = "rules: not distinguishable at this n"
+    elif any(v == VERDICT_SIGNIFICANT for v in verdicts):
+        rules_text = "rules: significant"
+    if rule_labels and decision.hidden_danger:
+        return f"FAIL ({rules_text} and hidden danger)"
+    return f"FAIL ({rules_text})"
 
 
 def load_policy(path: Path) -> GatePolicy:
@@ -133,6 +156,107 @@ def is_hidden_danger(
     return ref_refusal.value - cand_refusal.value >= hd.refusal_drop_pts - _EPS
 
 
+PAIRED_DRAWS = 2000  # bootstrap resamples of items for a paired difference
+PAIRED_SEED = 0
+VERDICT_SIGNIFICANT = "significant"
+VERDICT_INCONCLUSIVE = "not_distinguishable"
+VERDICT_PASS = "pass"
+VERDICT_MISSING = "missing"
+VERDICT_UNAVAILABLE = "unavailable"
+
+
+def _paired_drop(
+    reference: VariantResult,
+    candidate: VariantResult,
+    metric: str,
+) -> tuple[float, float, float] | None:
+    """Point drop and paired-bootstrap 95% interval, in points, reference minus candidate.
+
+    Uses the per-item correctness of both variants on the same items (same ids, same order).
+    Returns None when either side lacks per-item data or the items do not line up.
+    """
+    ref_ids = reference.item_ids.get(metric)
+    cand_ids = candidate.item_ids.get(metric)
+    ref_c = reference.per_item.get(metric)
+    cand_c = candidate.per_item.get(metric)
+    if ref_ids is None or cand_ids is None or ref_c is None or cand_c is None:
+        return None
+    if ref_ids != cand_ids or len(ref_c) != len(cand_c) or not ref_c:
+        return None
+    diff = np.asarray(ref_c, dtype=np.float64) - np.asarray(cand_c, dtype=np.float64)
+    n = diff.shape[0]
+    rng = np.random.default_rng(PAIRED_SEED)
+    draws = rng.integers(0, n, size=(PAIRED_DRAWS, n))
+    boot = diff[draws].mean(axis=1) * 100.0
+    low, high = np.percentile(boot, [2.5, 97.5])
+    return float(diff.mean() * 100.0), float(low), float(high)
+
+
+def _wilson_drop(
+    reference: dict[str, MetricValue],
+    candidate: dict[str, MetricValue],
+    metric: str,
+) -> tuple[float, float, float] | None:
+    """Point drop and a conservative interval from the two Wilson intervals, in points.
+
+    The interval is ref.ci_low - cand.ci_high to ref.ci_high - cand.ci_low. It is wider than a
+    paired test, and it is used only when no per-item data exists.
+    """
+    ref = reference.get(metric)
+    cand = candidate.get(metric)
+    if ref is None or cand is None:
+        return None
+    if ref.ci_low is None or ref.ci_high is None or cand.ci_low is None or cand.ci_high is None:
+        return None
+    return ref.value - cand.value, ref.ci_low - cand.ci_high, ref.ci_high - cand.ci_low
+
+
+def _verdict(
+    rule: GateRule,
+    reference: VariantResult,
+    candidate: VariantResult,
+    point_passes: bool,
+    missing: bool,
+) -> dict[str, Any]:
+    """How one rule's result should be read: basis, interval, and a verdict (review Q2).
+
+    A rule that passes on its point estimate is "pass". A rule that is missing fails closed as
+    "missing". A violated rule is "significant" when its interval lies wholly on the failing side
+    of the threshold, and "not_distinguishable" when the interval still includes the threshold.
+    Where no interval exists the verdict is "unavailable", and the rule is read as a point rule.
+    """
+    if missing:
+        return {"basis": "none", "interval": None, "verdict": VERDICT_MISSING}
+    if rule.kind == "drop_max":
+        paired = _paired_drop(reference, candidate, rule.metric)
+        if paired is not None:
+            point, low, high = paired
+            basis = "paired_bootstrap"
+            violated_low = low > rule.threshold + _EPS
+        else:
+            wilson = _wilson_drop(reference.metrics, candidate.metrics, rule.metric)
+            if wilson is None:
+                return {"basis": "none", "interval": None, "verdict": VERDICT_UNAVAILABLE}
+            point, low, high = wilson
+            basis = "wilson_bounds"
+            violated_low = low > rule.threshold + _EPS
+        interval = [low, high]
+    else:
+        cand = candidate.metrics[rule.metric]
+        if cand.ci_low is None or cand.ci_high is None:
+            return {"basis": "none", "interval": None, "verdict": VERDICT_UNAVAILABLE}
+        basis = "metric_ci"
+        interval = [cand.ci_low, cand.ci_high]
+        if rule.kind == "abs_max":
+            violated_low = cand.ci_low > rule.threshold + _EPS
+        else:
+            violated_low = cand.ci_high < rule.threshold - _EPS
+    if point_passes:
+        return {"basis": basis, "interval": interval, "verdict": VERDICT_PASS}
+    verdict = VERDICT_SIGNIFICANT if violated_low else VERDICT_INCONCLUSIVE
+    return {"basis": basis, "interval": interval, "verdict": verdict}
+
+
 HIDDEN_MISSING_PREFIX = "hidden_danger [missing"
 
 
@@ -162,6 +286,12 @@ def evaluate(
 ) -> list[GateDecision]:
     """One GateDecision per non-reference variant, in the order of results.
 
+    Point rules decide the labels in failed_rules, as before. Each rule also gets a significance
+    entry (see _verdict). A variant fails when a rule is significant, missing or unavailable, or
+    when a point violation is not distinguishable and policy.inconclusive_fails is True. A
+    hidden-danger row fails. A non-distinguishable point violation with inconclusive_fails False is
+    listed, but it does not fail the variant.
+
     Raises ValueError if the reference is absent, or if a variant name appears twice.
     """
     by_name: dict[str, VariantResult] = {}
@@ -172,26 +302,45 @@ def evaluate(
         by_name[name] = vr
     if reference not in by_name:
         raise ValueError(f"reference variant {reference!r} is not in the results")
-    ref_metrics = by_name[reference].metrics
+    ref_vr = by_name[reference]
+    ref_metrics = ref_vr.metrics
 
     decisions: list[GateDecision] = []
     for vr in results:
         if vr.variant.name == reference:
             continue
-        failed = _failed_rules(policy, vr.metrics, ref_metrics)
-        missing = hidden_danger_missing(vr.metrics, ref_metrics, policy)
-        if missing:
+        cand_metrics = vr.metrics
+        failed: list[str] = []
+        blocking = False
+        significance: dict[str, dict[str, Any]] = {}
+        for rule in policy.rules:
+            label = rule_label(rule)
+            passes = _rule_passes(rule, cand_metrics, ref_metrics)
+            missing = rule.metric not in cand_metrics or (
+                rule.kind == "drop_max" and rule.metric not in ref_metrics
+            )
+            verdict = _verdict(rule, ref_vr, vr, passes, missing)
+            significance[label] = verdict
+            if passes:
+                continue
+            failed.append(f"{label} [missing]" if missing else label)
+            if verdict["verdict"] != VERDICT_INCONCLUSIVE or policy.inconclusive_fails:
+                blocking = True
+        missing_hd = hidden_danger_missing(cand_metrics, ref_metrics, policy)
+        if missing_hd:
             # Fail closed: the flag was not computed, so the gate cannot pass.
-            failed.append(f"{HIDDEN_MISSING_PREFIX}: {', '.join(missing)}]")
+            failed.append(f"{HIDDEN_MISSING_PREFIX}: {', '.join(missing_hd)}]")
             hidden = False
+            blocking = True
         else:
-            hidden = is_hidden_danger(vr.metrics, ref_metrics, policy)
+            hidden = is_hidden_danger(cand_metrics, ref_metrics, policy)
         decisions.append(
             GateDecision(
                 variant=vr.variant.name,
-                passed=not failed and not hidden,
+                passed=not blocking and not hidden,
                 failed_rules=failed,
                 hidden_danger=hidden,
+                significance=significance,
             )
         )
     return decisions

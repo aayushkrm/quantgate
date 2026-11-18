@@ -27,6 +27,12 @@ rules:
     kind: drop_max
     threshold: 10.0        # percentage points
 
+# inconclusive_fails (schema 2): true (the default) fails a variant whose point estimate breaks a
+# rule even when the interval does not exclude the threshold. Such a failure is labelled "not
+# distinguishable at this n". false lists it and lets the variant pass. Significant violations
+# always fail, whatever this is set to.
+inconclusive_fails: true
+
 hidden_danger:
   # Quality metrics that must stay within band_pts of the reference for a hidden-danger flag.
   quality_metrics: [arc_acc, gsm8k_acc]

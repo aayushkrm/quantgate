@@ -155,9 +155,37 @@ def _perf_table(report: QuantReport) -> Table | None:
 
 
 GATE_NOTE = (
-    "Gate is PASS only when every rule passes and the variant is not a hidden-danger row. "
-    "A hidden-danger row fails the gate even when every rule passes."
+    "Gate is PASS only when every blocking rule passes and the variant is not a hidden-danger "
+    "row. A hidden-danger row fails the gate even when every rule passes. A point violation whose "
+    "interval still includes the threshold is labelled not distinguishable at this n. The "
+    "intervals are paired bootstrap (ARC, GSM8K drops), Wilson bounds (refusal drops) or the "
+    "metric's own 95% CI (abs rules)."
 )
+
+
+def _judgement_cell(d: GateDecision) -> str:
+    """Per failing rule: its verdict, basis and 95% interval, from the significance record."""
+    parts: list[str] = []
+    for label in d.failed_rules:
+        if label.startswith("hidden_danger"):
+            continue
+        sig = d.significance.get(label.replace(" [missing]", ""), {})
+        verdict = sig.get("verdict", "not recorded")
+        basis = sig.get("basis", "")
+        interval = sig.get("interval")
+        text = f"{label}: {verdict}"
+        if basis and basis != "none":
+            text += f" ({basis}"
+            if interval:
+                text += f", [{_fmt_interval(interval)}]"
+            text += ")"
+        parts.append(text)
+    return "; ".join(parts) if parts else "none"
+
+
+def _fmt_interval(interval: list[float]) -> str:
+    """Two numbers of a 95% interval, to two decimals, for the judgement column."""
+    return f"{interval[0]:.2f}, {interval[1]:.2f}"
 
 
 def _hidden_cell(d: GateDecision) -> str:
@@ -172,12 +200,19 @@ def _hidden_cell(d: GateDecision) -> str:
 def _gate_table(report: QuantReport) -> Table:
     """Gate verdict per non-reference variant, with the failing rules and the hidden-danger flag
     in separate columns, so that a hidden-danger failure is visible as such."""
-    headers = ["Variant", "Gate", "Rules that fail", "Hidden danger"]
+    headers = [
+        "Variant",
+        "Gate",
+        "Rules that fail",
+        "Judgement (verdict, basis, 95% interval)",
+        "Hidden danger",
+    ]
     rows = [
         [
             d.variant,
             gate_label(d),
             ", ".join(d.failed_rules) if d.failed_rules else "none",
+            _judgement_cell(d),
             _hidden_cell(d),
         ]
         for d in report.decisions

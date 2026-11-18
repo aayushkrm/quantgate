@@ -133,14 +133,14 @@ def test_json_round_trip(model_type: type[BaseModel]) -> None:
     assert type(restored) is model_type
 
 
-def test_quant_report_schema_version_is_literal_one() -> None:
-    assert _report().schema_version == "1"
-    assert '"schema_version":"1"' in _report().model_dump_json()
+def test_quant_report_schema_version_is_two() -> None:
+    assert _report().schema_version == "2"
+    assert '"schema_version":"2"' in _report().model_dump_json()
 
 
 def test_quant_report_rejects_other_schema_versions() -> None:
     data = _report().model_dump(mode="json")
-    data["schema_version"] = "2"
+    data["schema_version"] = "9"
     with pytest.raises(ValidationError):
         QuantReport.model_validate(data)
 

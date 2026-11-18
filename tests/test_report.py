@@ -59,7 +59,7 @@ def test_write_then_load_round_trip(tmp_path: Path, mixed: QuantReport) -> None:
 
 def test_load_rejects_wrong_schema_version(tmp_path: Path, mixed: QuantReport) -> None:
     data = json.loads(mixed.model_dump_json())
-    data["schema_version"] = "2"
+    data["schema_version"] = "9"
     path = tmp_path / "report.json"
     path.write_text(json.dumps(data), encoding="utf-8")
     with pytest.raises(ValidationError):
@@ -75,7 +75,10 @@ def test_build_report_assembles_fields(mixed: QuantReport) -> None:
         recommended=mixed.recommended,
         env_info=mixed.env_info,
     )
-    assert rebuilt == mixed
+    # Fixtures are schema 1; the rebuilt report is schema 2. Every other field must match.
+    assert rebuilt.model_dump(exclude={"schema_version"}) == mixed.model_dump(
+        exclude={"schema_version"}
+    )
 
 
 def test_fixture_recommendation_is_consistent_with_gate(
@@ -261,7 +264,7 @@ def test_hidden_danger_fails_gate_even_with_no_failed_rules(hidden: QuantReport)
             assert not d.passed
     text = render_markdown(hidden)
     assert "FAIL (hidden danger)" in text or "FAIL (rules and hidden danger)" in text
-    assert "Gate is PASS only when every rule passes" in text
+    assert "Gate is PASS only when every blocking rule passes" in text
 
 
 def test_gate_label_covers_every_combination() -> None:

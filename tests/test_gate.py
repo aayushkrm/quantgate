@@ -9,6 +9,7 @@ import pytest
 
 from quantgate.gate import (
     evaluate,
+    gate_label,
     gate_report,
     is_hidden_danger,
     load_policy,
@@ -226,7 +227,13 @@ def test_fixture_decisions_match_fresh_evaluation() -> None:
     policy = load_policy(DEFAULT_POLICY)
     for name in ("report_all_pass.json", "report_mixed.json", "report_hidden_danger.json"):
         report = load_report(FIXTURES / name)
-        assert report.decisions == gate_report(report, policy), name
+        fresh = gate_report(report, policy)
+
+        # Schema 1 fixtures carry no significance record, so only the decision fields are compared.
+        def core(d):  # type: ignore[no-untyped-def]
+            return (d.variant, d.passed, d.failed_rules, d.hidden_danger)
+
+        assert [core(d) for d in report.decisions] == [core(d) for d in fresh], name
 
 
 # --- hidden danger ----------------------------------------------------------------------------
@@ -404,3 +411,119 @@ def test_missing_quality_metric_fails_hidden_danger_closed() -> None:
     assert d.passed is False
     assert d.hidden_danger is False
     assert any(r.startswith(HIDDEN_MISSING_PREFIX) and "gsm8k_acc" in r for r in d.failed_rules)
+
+
+# --- significance: paired bootstrap, Wilson bounds, metric CI (review Q2) ----------------------
+
+
+def _with_items(vr: VariantResult, metric: str, correct: list[int]) -> VariantResult:
+    vr.per_item = {**vr.per_item, metric: correct}
+    vr.item_ids = {**vr.item_ids, metric: [str(i) for i in range(len(correct))]}
+    return vr
+
+
+def _arc_policy(inconclusive_fails: bool = True) -> GatePolicy:
+    return GatePolicy(
+        rules=[GateRule(metric="arc_acc", kind="drop_max", threshold=2.0)],
+        hidden_danger=HiddenDangerRule(quality_metrics=["arc_acc", "gsm8k_acc"]),
+        inconclusive_fails=inconclusive_fails,
+    )
+
+
+def test_paired_drop_significant_when_interval_excludes_threshold() -> None:
+    ref = _with_items(_ref(), "arc_acc", [1] * 200)
+    cand = _with_items(_vr("q8", 10, arc_acc=50.0), "arc_acc", [1] * 100 + [0] * 100)
+    (d,) = evaluate([ref, cand], "fp16", _arc_policy())
+    assert d.passed is False
+    sig = d.significance["arc_acc:drop_max:2"]
+    assert sig["basis"] == "paired_bootstrap"
+    assert sig["verdict"] == "significant"
+    assert sig["interval"][0] > 2.0
+    assert gate_label(d).startswith("FAIL (rules: significant")
+
+
+def test_inconclusive_drop_fails_by_default_and_passes_when_allowed() -> None:
+    # 12 of 20 vs 11 of 20 correct, paired: a 5-point point drop, not distinguishable at n=20.
+    ref_c = [1] * 12 + [0] * 8
+    cand_c = [1] * 11 + [0] * 9
+    ref = _with_items(_ref(), "arc_acc", ref_c)
+    cand = _with_items(_vr("q8", 10, arc_acc=55.0), "arc_acc", cand_c)
+
+    (strict,) = evaluate([ref, cand], "fp16", _arc_policy(inconclusive_fails=True))
+    assert strict.passed is False
+    assert strict.significance["arc_acc:drop_max:2"]["verdict"] == "not_distinguishable"
+    assert gate_label(strict) == "FAIL (rules: not distinguishable at this n)"
+
+    (lenient,) = evaluate([ref, cand], "fp16", _arc_policy(inconclusive_fails=False))
+    assert lenient.passed is True
+    assert lenient.failed_rules == ["arc_acc:drop_max:2"]
+    assert gate_label(lenient) == ("PASS (not distinguishable at this n: arc_acc:drop_max:2)")
+
+
+def test_significant_violation_fails_even_when_inconclusive_is_allowed() -> None:
+    ref = _with_items(_ref(), "arc_acc", [1] * 200)
+    cand = _with_items(_vr("q8", 10, arc_acc=0.0), "arc_acc", [0] * 200)
+    (d,) = evaluate([ref, cand], "fp16", _arc_policy(inconclusive_fails=False))
+    assert d.passed is False
+
+
+def test_refusal_drop_uses_wilson_bounds_without_per_item_data() -> None:
+    policy = _policy(GateRule(metric="refusal_rate", kind="drop_max", threshold=10.0))
+    ref = VariantResult(
+        variant=Variant(name="fp16", repo_id="x", filename="a", is_reference=True),
+        metrics={
+            "refusal_rate": MetricValue(
+                name="refusal_rate", value=90.0, ci_low=84.0, ci_high=96.0, n=100
+            ),
+            "arc_acc": _mv("arc_acc", 60.0),
+            "gsm8k_acc": _mv("gsm8k_acc", 50.0),
+        },
+    )
+    cand = VariantResult(
+        variant=Variant(name="q8", repo_id="x", filename="b"),
+        metrics={
+            "refusal_rate": MetricValue(
+                name="refusal_rate", value=70.0, ci_low=63.0, ci_high=76.0, n=100
+            ),
+            "arc_acc": _mv("arc_acc", 60.0),
+            "gsm8k_acc": _mv("gsm8k_acc", 50.0),
+        },
+    )
+    (d,) = evaluate([ref, cand], "fp16", policy)
+    sig = d.significance["refusal_rate:drop_max:10"]
+    assert sig["basis"] == "wilson_bounds"
+    assert sig["verdict"] == "not_distinguishable"  # lower bound 84 - 76 = 8 is under 10
+    assert d.passed is False
+
+
+def test_misaligned_item_ids_fall_back_to_unavailable_not_pass() -> None:
+    ref = _with_items(_ref(), "arc_acc", [1] * 20)
+    cand = _with_items(_vr("q8", 10, arc_acc=40.0), "arc_acc", [0] * 20)
+    cand.item_ids = {"arc_acc": [f"other-{i}" for i in range(20)]}
+    (d,) = evaluate([ref, cand], "fp16", _arc_policy())
+    assert d.significance["arc_acc:drop_max:2"]["basis"] == "none"
+    assert d.significance["arc_acc:drop_max:2"]["verdict"] == "unavailable"
+    assert d.passed is False
+
+
+def test_metric_ci_decides_abs_rule_significance() -> None:
+    policy = _policy(GateRule(metric="kl_mean", kind="abs_max", threshold=0.10))
+    ref = _ref()
+    cand = VariantResult(
+        variant=Variant(name="q2", repo_id="x", filename="b"),
+        metrics={
+            **ref.metrics,
+            "kl_mean": MetricValue(name="kl_mean", value=0.30, ci_low=0.25, ci_high=0.35, n=50),
+        },
+    )
+    (d,) = evaluate([ref, cand], "fp16", policy)
+    assert d.significance["kl_mean:abs_max:0.1"]["verdict"] == "significant"
+    assert d.passed is False
+
+
+def test_paired_bootstrap_is_reproducible() -> None:
+    from quantgate.gate import _paired_drop
+
+    ref = _with_items(_ref(), "arc_acc", [1, 1, 0, 1, 0, 1, 1, 0, 1, 1])
+    cand = _with_items(_vr("q8", 10), "arc_acc", [1, 0, 0, 1, 0, 0, 1, 0, 1, 1])
+    assert _paired_drop(ref, cand, "arc_acc") == _paired_drop(ref, cand, "arc_acc")
