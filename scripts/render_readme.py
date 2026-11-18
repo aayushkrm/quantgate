@@ -26,6 +26,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 README = REPO / "README.md"
 REPORT = REPO / "results" / "report.json"
+HEADLINE = REPO / "results" / "headline.json"
+BANDWIDTH = REPO / "results" / "bandwidth.json"
 DOCS = REPO / "docs"
 
 LAPTOP_START = "<!-- laptop:start -->"
@@ -49,6 +51,13 @@ sys.path.insert(0, str(REPO / "src"))
 from quantgate.cli import load_suite_config  # noqa: E402
 from quantgate.evals import wilson_ci  # noqa: E402
 from quantgate.gate import gate_label  # noqa: E402
+from quantgate.headline import (  # noqa: E402
+    Headline,
+    build_headline,
+    headline_text,
+    load_bandwidth,
+    write_headline,
+)
 from quantgate.report import (  # noqa: E402
     load_report,
     render_readme_block,
@@ -198,12 +207,58 @@ def banned_word_hits(paths: list[Path]) -> list[str]:
     return hits
 
 
+def _write_or_check_headline(expected: Headline | None, check: bool) -> int:
+    """Write results/headline.json from the committed results, or check that it is current.
+
+    With no committed report there must be no headline file, since a headline built from nothing
+    would be invented. Returns 0 when fine, 1 when a check fails.
+    """
+    current = HEADLINE.read_text(encoding="utf-8") if HEADLINE.is_file() else None
+    if expected is None:
+        if current is not None and check:
+            print(
+                "results/headline.json exists but no results/report.json does: remove it",
+                file=sys.stderr,
+            )
+            return 1
+        if current is not None and not check:
+            HEADLINE.unlink()
+            print("Removed results/headline.json (no committed report)")
+        return 0
+    text = headline_text(expected)
+    if check:
+        if current != text:
+            print(
+                "results/headline.json is out of date: run `make report`",
+                file=sys.stderr,
+            )
+            return 1
+        return 0
+    if current != text:
+        write_headline(expected, HEADLINE)
+        print(f"Wrote {HEADLINE}")
+    else:
+        print("results/headline.json is up to date")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
-    parser.add_argument("--check", action="store_true", help="exit 1 if README.md is stale")
+    parser.add_argument("--check", action="store_true", help="exit 1 if a generated file is stale")
+    parser.add_argument(
+        "--headline",
+        action="store_true",
+        help="write only results/headline.json (used by make report)",
+    )
     args = parser.parse_args(argv)
 
     report = load_report(REPORT) if REPORT.is_file() else None
+    bandwidth = load_bandwidth(BANDWIDTH)
+    expected = build_headline(report, bandwidth)
+
+    if args.headline:
+        return _write_or_check_headline(expected, check=False)
+
     current = README.read_text(encoding="utf-8")
     try:
         rendered = render_readme(current, report)
@@ -217,7 +272,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Rewrote {README.relative_to(REPO)}")
         else:
             print("README is up to date")
-        return 0
+        return _write_or_check_headline(expected, check=False)
 
     status = 0
     if rendered != current:
@@ -226,6 +281,7 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         status = 1
+    status = max(status, _write_or_check_headline(expected, check=True))
     banned_paths = [README, *sorted(DOCS.glob("*.md"))]
     hits = banned_word_hits(banned_paths)
     for hit in hits:

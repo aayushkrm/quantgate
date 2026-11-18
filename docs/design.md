@@ -54,4 +54,11 @@ This file records the decisions behind the code and the reasons for them. The pl
 - `src/quantgate/schema.py`: frozen interfaces. Changes need approval and a `schema_version` bump.
 - `src/quantgate/cli.py`: the typer app. Every command takes `--json`.
 - `results/`: committed JSON only. Raw completions are gitignored.
+- `results/headline.json`: the hub's standard headline (`schemas/headline.schema.json`). It is
+  written by `make report` from `results/report.json`, and by `results/bandwidth.json` when that
+  record is committed. Each value is a string computed from the report. An item whose source is
+  missing is omitted. A null result is a headline too: "0 of N candidates" for hidden danger,
+  "none" for the recommendation. Items from a SYNTHETIC report are marked synthetic. Only the
+  three leading items are featured. `scripts/render_readme.py --check` (run by `make check-results`)
+  fails when the file is stale, or when it exists without a committed report.
 - `data/subsets/`: committed item IDs. Text is loaded at run time from the Hub.

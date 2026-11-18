@@ -34,9 +34,11 @@ readme:
 results:
 	uv run quantgate eval -c configs/variants.yaml --out results
 
-# Markdown, Pareto plots and the static page from committed results. Fails clearly without them.
+# Markdown, Pareto plots, the static page and results/headline.json from committed results.
+# Fails clearly without them, and writes no headline unless the report exists.
 report:
 	uv run quantgate report results --out-dir site
+	uv run python scripts/render_readme.py --headline
 
 # README blocks must match the committed results, the README must have no banned words, and the
 # gate must agree with the stored decisions. Uses a SYNTHETIC fixture until results are committed.
