@@ -30,6 +30,8 @@ DOCS = REPO / "docs"
 
 LAPTOP_START = "<!-- laptop:start -->"
 LAPTOP_END = "<!-- laptop:end -->"
+POWER_START = "<!-- power:start -->"
+POWER_END = "<!-- power:end -->"
 
 BANNED = (
     "production-ready",
@@ -44,12 +46,15 @@ BANNED = (
 
 sys.path.insert(0, str(REPO / "src"))
 
+from quantgate.cli import load_suite_config  # noqa: E402
+from quantgate.evals import wilson_ci  # noqa: E402
 from quantgate.gate import gate_label  # noqa: E402
 from quantgate.report import (  # noqa: E402
     load_report,
     render_readme_block,
     update_readme,
 )
+from quantgate.resources import config_path  # noqa: E402
 from quantgate.schema import QuantReport  # noqa: E402
 
 NO_RESULTS_RESULTS = (
@@ -119,6 +124,49 @@ def laptop_answer(report: QuantReport | None) -> str:
     return "\n".join(lines) + "\n"
 
 
+Z_ALPHA_TWO_SIDED = 1.959963984540054
+Z_POWER_80 = 0.8416212335729143
+
+
+def power_block() -> str:
+    """What the pre-registered sample sizes can detect, computed from configs and the Wilson
+    interval. These are design numbers, not measured results, so they can be rendered before any
+    run. They are worst-case (p = 50%).
+
+    Single rate: the half-width of its 95% Wilson interval. Difference of two independent rates:
+    the smallest difference detected with 80% power at alpha 0.05, by the normal approximation.
+    A paired design (same items) can detect smaller differences; that is not computed here.
+    """
+    suite = load_suite_config(config_path("variants.yaml"))
+    rows = [
+        ("ARC-Easy accuracy", suite.arc.n),
+        ("GSM8K accuracy", suite.gsm8k.n),
+        ("Refusal, harmful prompts", suite.refusal.n_harmful),
+        ("Refusal, benign prompts (over-refusal)", suite.refusal.n_benign),
+    ]
+    lines = [
+        "| Metric | n | 95% half-width of one rate (p = 50%) | Smallest difference detected, "
+        "independent samples (80% power) |",
+        "|---|---|---|---|",
+    ]
+    for name, n in rows:
+        low, high = wilson_ci(n // 2, n)
+        half = 100.0 * (high - low) / 2.0
+        mde = 100.0 * (Z_ALPHA_TWO_SIDED + Z_POWER_80) * (2.0 * 0.25 / n) ** 0.5
+        lines.append(f"| {name} | {n} | ±{half:.1f} pts | {mde:.1f} pts |")
+    return "\n".join(lines) + "\n"
+
+
+def render_power(text: str) -> str:
+    """README text with the power block between its markers replaced. Raises if absent."""
+    start = text.find(POWER_START)
+    end = text.find(POWER_END)
+    if start == -1 or end == -1 or end < start:
+        raise ValueError(f"README must contain {POWER_START} and {POWER_END} in order")
+    head = text[: start + len(POWER_START)]
+    return f"{head}\n{power_block()}{text[end:]}"
+
+
 def render_blocks(report: QuantReport | None) -> tuple[str, str]:
     """The results block and the laptop block, as they appear between the markers."""
     results = NO_RESULTS_RESULTS if report is None else render_readme_block(report)
@@ -128,7 +176,7 @@ def render_blocks(report: QuantReport | None) -> tuple[str, str]:
 def render_readme(text: str, report: QuantReport | None) -> str:
     """README text with both generated blocks replaced. Raises ValueError if a marker is absent."""
     results, laptop = render_blocks(report)
-    text = update_readme(text, results)
+    text = render_power(update_readme(text, results))
     start = text.find(LAPTOP_START)
     end = text.find(LAPTOP_END)
     if start == -1 or end == -1 or end < start:

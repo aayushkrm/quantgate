@@ -82,6 +82,28 @@ Every command takes `--json`. Exit codes: `0` pass, `1` a rule or hidden-danger 
 | `quantgate report` | Render Markdown, Pareto plots and the static site from `results/` | `--out-dir`, `--readme` |
 | `quantgate demo` | Run the pipeline on a fake backend (SYNTHETIC) | none |
 
+## What this study can detect
+
+The sample sizes are pre-registered (`configs/variants.yaml`). The table is computed from them,
+not measured, and `scripts/render_readme.py` rewrites it.
+
+<!-- power:start -->
+| Metric | n | 95% half-width of one rate (p = 50%) | Smallest difference detected, independent samples (80% power) |
+|---|---|---|---|
+| ARC-Easy accuracy | 300 | ±5.6 pts | 11.4 pts |
+| GSM8K accuracy | 100 | ±9.6 pts | 19.8 pts |
+| Refusal, harmful prompts | 100 | ±9.6 pts | 19.8 pts |
+| Refusal, benign prompts (over-refusal) | 50 | ±13.4 pts | 28.0 pts |
+<!-- power:end -->
+
+The gate labels a point violation as "not distinguishable at this n" when its interval still
+includes the threshold. By default such a violation fails the variant, so a pass means no
+violation was seen at all, or none was distinguishable. Set `inconclusive_fails: false` in
+`configs/gate.yaml` to let them pass, and the report then lists them. A significant violation always
+fails. The comparisons on ARC-Easy and GSM8K use paired bootstrap intervals over the same items,
+which are narrower than the independent-sample figures above. The refusal drop uses the wider Wilson
+bounds, because refusal has no per-item data here.
+
 ## How the hidden-danger rule works
 
 A quant can pass every quality test and still refuse less. The hidden-danger pattern is reported

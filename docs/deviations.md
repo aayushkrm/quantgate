@@ -73,11 +73,28 @@ reader can see what the pre-registration in `docs/prereg.md` was written against
     perf smoke on q4_k_m (2026-11-19, AC power) stopped at 27 of the 128 requested tokens, so
     the decode rate rested on a short generation. Perf now uses `generate_fixed_length`, which
     suppresses the end-of-sequence tokens with a logit bias of -100. The perf output records
-    `gen_fixed_length`. Decode tok/s is computed over the n-1 gaps between the first and the last
+    `gen_fixed_length`. Decode tok/s is computed over the n-1 gaps between the initial and the final
     token, not over n tokens (review Q7). The 512-token budget in `docs/prereg.md` §3 applies to
     the text before the chat template. The templated prompt measured 541 tokens (p50). The
     prefill rate uses the counted tokens, so it stays correct. The smoke numbers are not results,
     and no full run has started with this procedure.
+
+13. **Schema 2 and CI-aware gate labels (review Q2).** `schemas/`, `src/quantgate/schema.py`:
+    additive optional fields only. `VariantResult.item_ids` and `VariantResult.per_item` (per-item
+    correctness for ARC and GSM8K), `GateDecision.significance`, and `GatePolicy.inconclusive_fails`
+    (default true). The report schema version is now "2". Schema 1 reports still load. The change
+    is needed because the gate cannot judge a drop without per-item data. Pre-registered decisions
+    do not change under the default. Labels and the significance record are new. The judgement
+    rules are in `docs/prereg.md` §4. The point rules still decide `failed_rules`.
+
+14. **Guards on resume, power and hidden danger (review Q3, Q4, Q5).** A per-suite result carries a
+    fingerprint: method version, quantgate version, scaled suite settings, seed, n-scale, context,
+    the model's sha256 and size, and a digest of the subsets. A mismatch is refused, and the file is
+    not overwritten. env.json refuses a different suite, n-scale or policy in the same directory,
+    and it keeps a run history. Perf results record pmset before and after. On macOS a variant on
+    battery or with a thermal or performance warning writes no result, as the rerun rule requires.
+    The hidden-danger check fails closed when a metric it needs is missing. These guards change
+    only what the tool refuses to do. No measured quantity changes.
 
 ### Open items
 
