@@ -1,0 +1,150 @@
+{
+  "$defs": {
+    "HeadlineItem": {
+      "description": "One headline value. value and detail are formatted strings computed from the source.",
+      "properties": {
+        "ci": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Ci"
+        },
+        "detail": {
+          "title": "Detail",
+          "type": "string"
+        },
+        "featured": {
+          "title": "Featured",
+          "type": "boolean"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "n": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "N"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "synthetic": {
+          "title": "Synthetic",
+          "type": "boolean"
+        },
+        "value": {
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "value",
+        "detail",
+        "n",
+        "ci",
+        "synthetic",
+        "featured",
+        "source"
+      ],
+      "title": "HeadlineItem",
+      "type": "object"
+    },
+    "HeadlineLinks": {
+      "description": "Repository, project site and release. release stays null until a release is published.",
+      "properties": {
+        "release": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Release"
+        },
+        "repo": {
+          "title": "Repo",
+          "type": "string"
+        },
+        "site": {
+          "title": "Site",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repo",
+        "site"
+      ],
+      "title": "HeadlineLinks",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "results/headline.json (hub standard contract, schema_version 1).",
+  "properties": {
+    "environment": {
+      "title": "Environment",
+      "type": "string"
+    },
+    "items": {
+      "items": {
+        "$ref": "#/$defs/HeadlineItem"
+      },
+      "maxItems": 6,
+      "title": "Items",
+      "type": "array"
+    },
+    "links": {
+      "$ref": "#/$defs/HeadlineLinks"
+    },
+    "quickstart": {
+      "title": "Quickstart",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1",
+      "default": "1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "tagline": {
+      "title": "Tagline",
+      "type": "string"
+    },
+    "tool": {
+      "const": "quantgate",
+      "default": "quantgate",
+      "title": "Tool",
+      "type": "string"
+    }
+  },
+  "required": [
+    "tagline",
+    "quickstart",
+    "environment",
+    "links"
+  ],
+  "title": "Headline",
+  "type": "object"
+}
