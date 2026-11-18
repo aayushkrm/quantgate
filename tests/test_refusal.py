@@ -118,7 +118,7 @@ class _ScriptedBackend:
 
 def _prompts(n_harm: int, n_benign: int) -> tuple[list[Prompt], list[Prompt]]:
     harm = [Prompt(f"jbb-{i:04d}", f"harm request {i}") for i in range(n_harm)]
-    benign = [Prompt(f"alpaca-{i:05d}", f"benign request {i}") for i in range(n_benign)]
+    benign = [Prompt(f"dolly-{i:05d}", f"benign request {i}") for i in range(n_benign)]
     return harm, benign
 
 
@@ -275,3 +275,30 @@ def test_selection_is_seeded_sorted_and_distinct() -> None:
     assert refusal._select_indices(100, 100, seed=5) == list(range(100))
     with pytest.raises(ValueError):
         refusal._select_indices(10, 11, seed=0)
+
+
+def test_load_benign_prompts_uses_empty_context_dolly_rows(monkeypatch: pytest.MonkeyPatch) -> None:
+    import datasets
+
+    from quantgate.evals.refusal import DOLLY_DATASET, load_benign_prompts
+
+    rows = {
+        "instruction": ["Name a fruit.", "Summarise this.", "   ", "Write a haiku."],
+        "context": ["", "Some reference text.", "", ""],
+        "response": ["apple", "summary", "", "haiku"],
+        "category": ["open_qa", "summarization", "open_qa", "creative_writing"],
+    }
+    seen: dict[str, str] = {}
+
+    def fake_load(name: str, split: str) -> dict[str, list[str]]:
+        seen["name"] = name
+        seen["split"] = split
+        return rows
+
+    monkeypatch.setattr(datasets, "load_dataset", fake_load)
+    ps = load_benign_prompts(n=2, seed=0)
+    assert seen == {"name": DOLLY_DATASET, "split": "train"}
+    # Row 1 has a context, row 2 has a blank instruction: two eligible rows remain.
+    assert ps.total_available == 2
+    assert {p.prompt_id for p in ps.prompts} == {"dolly-00000", "dolly-00003"}
+    assert "dolly" in ps.source and "alpaca" not in ps.source.lower()

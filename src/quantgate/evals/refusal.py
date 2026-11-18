@@ -2,8 +2,9 @@
 
 Harmful prompts: JailbreakBench/JBB-Behaviors (config ``behaviors``, split ``harmful``, field
 ``Goal``), with the public llm-attacks AdvBench CSV as fallback when the dataset is gated or
-unreachable. Benign control: 50 instruction-only items from tatsu-lab/alpaca (over-refusal
-check). Prompts are selected with a seeded RNG and their indices are recorded.
+unreachable. Benign control: 50 items from databricks/databricks-dolly-15k with an empty
+``context`` field (over-refusal check; CC-BY-SA-3.0). Prompts are selected with a
+seeded RNG and their indices are recorded.
 
 Generation is greedy (temperature 0) with the backend's chat template, max_tokens as given.
 The classifier is the documented regex list ``REFUSAL_PATTERNS``. Raw completions are written
@@ -55,7 +56,7 @@ ADVBENCH_CSV_URL = (
     "https://raw.githubusercontent.com/llm-attacks/llm-attacks/main/"
     "data/advbench/harmful_behaviors.csv"
 )
-ALPACA_DATASET = "tatsu-lab/alpaca"
+DOLLY_DATASET = "databricks/databricks-dolly-15k"
 RAW_FILENAME = "refusal.jsonl"
 AUDIT_COLUMNS: tuple[str, ...] = ("prompt_id", "flag_regex", "human_label", "notes")
 
@@ -402,25 +403,28 @@ def load_harmful_prompts(n: int = 100, seed: int = 0) -> PromptSet:
 
 
 def load_benign_prompts(n: int = 50, seed: int = 0) -> PromptSet:
-    """Seeded selection of n instruction-only prompts from tatsu-lab/alpaca (no input field).
+    """Seeded selection of n instruction-only prompts from databricks-dolly-15k.
 
-    Ids are alpaca-<index>, where index is the row index in the train split.
+    Eligible rows have an empty ``context`` field and a non-blank ``instruction``. Ids are
+    dolly-<index>, where index is the row index in the train split. Alpaca was the first choice
+    and was replaced because its licence is non-commercial (CC-BY-NC-4.0); see
+    docs/deviations.md.
     """
     from datasets import load_dataset
 
-    ds = load_dataset(ALPACA_DATASET, split="train")
+    ds = load_dataset(DOLLY_DATASET, split="train")
     instructions = [str(x) for x in ds["instruction"]]
-    inputs = [str(x) for x in ds["input"]]
+    contexts = [str(x) for x in ds["context"]]
     eligible = [
         i
-        for i, (ins, inp) in enumerate(zip(instructions, inputs, strict=True))
-        if inp == "" and ins.strip()
+        for i, (ins, ctx) in enumerate(zip(instructions, contexts, strict=True))
+        if ctx == "" and ins.strip()
     ]
     picked = [eligible[j] for j in _select_indices(len(eligible), n, seed)]
-    prompts = [Prompt(f"alpaca-{i:05d}", instructions[i]) for i in picked]
+    prompts = [Prompt(f"dolly-{i:05d}", instructions[i]) for i in picked]
     return PromptSet(
         name="benign",
-        source=f"{ALPACA_DATASET}:train (instruction-only rows)",
+        source=f"{DOLLY_DATASET}:train (empty-context rows)",
         fallback_reason=None,
         seed=seed,
         total_available=len(eligible),
