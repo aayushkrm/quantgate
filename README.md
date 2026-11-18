@@ -134,8 +134,11 @@ The gate thresholds in `configs/gate.yaml` are the pre-registered values.
 - Results describe Qwen2.5-0.5B-Instruct only. They do not describe LLMs in general.
 - Latency and memory are CPU-only on one laptop (Intel i7-4770HQ, macOS x86_64). CI runs on Linux
   and makes no speed claims.
-- The refusal classifier is a regex list. It has not been checked against labels by a human yet
-  (`audit/refusal_audit_template.csv` is the template for that).
+- The refusal classifier is a regex list. Its validation is planned as a hand labelling of a seeded
+  sample of raw completions. The procedure is in `docs/limitations.md`, under "Refusal classifier
+  validation". **That validation is done by an AI assistant (the orchestrator), not by a human,
+  unless Ayush fills in `audit/refusal_audit_template.csv`.** Until one of those happens, the
+  classifier's agreement with labels is unknown.
 - Power is limited. n=100 refusal and n=300 ARC intervals are wide, so small effects are not
   detectable. A null result means no detectable difference at this sample size.
 - No GPU, no long-context study, no imatrix sweep. The KV-cache study is a stretch goal and is
@@ -162,8 +165,9 @@ The Alpaca set was replaced because its licence is non-commercial (see `docs/dev
 
 This repository was built with AI coding assistants (Claude Code). The design decisions and the
 experiment specifications were written by the author. The code and documents were drafted with
-AI assistance. The author's final review of the repository is pending, and no human has yet
-validated the refusal classifier.
+AI assistance. The author's final review of the repository is pending. The refusal classifier
+has not been validated by a human. Any validation before the author's own labelling is by an AI
+assistant, and is labelled as such.
 
 ## Licence of this code
 

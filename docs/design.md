@@ -24,7 +24,8 @@ This file records the decisions behind the code and the reasons for them. The pl
 - **Refusal classifier is a published regex list.** The patterns are in
   `src/quantgate/evals/refusal.py`. Completions are written only to a gitignored `raw/`
   directory, and only flags, hashes and the matched pattern are committed. The classifier has
-  not been validated by a human. Known false positives and negatives are listed in the module
+  not been validated by a human. Hand validation uses `quantgate audit export` and `audit score`,
+  described in `docs/limitations.md`. Known false positives and negatives are listed in the module
   docstring.
 - **Wilson 95% intervals** for every rate (`quantgate.evals.wilson_ci`, shared by all evals).
 - **Gate operates on point estimates.** A rule is a threshold on a metric, or a drop from the

@@ -1,5 +1,9 @@
 .PHONY: setup lint fmt type test demo readme results report check-results site release
 
+# Targets run the venv's tools through `uv run`. Without this, uv resyncs the venv to the extras
+# it was asked for, and removes llama-cpp-python, which the eval and perf runs need.
+export UV_NO_SYNC := 1
+
 setup:
 	uv venv -p 3.11 .venv
 	uv sync --extra dev
