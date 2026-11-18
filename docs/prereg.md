@@ -33,7 +33,7 @@ were measured at this commit and are facts about the inputs, not results.
 |---|---|---|---|
 | KL passages | `Salesforce/wikitext`, `wikitext-2-raw-v1`, test. Paragraph rows of at least 1200 characters, seeded sample | 50 | 244 / 256 / 256 after cutting to 256. Before cutting: 244 / 317 / 562. 46 of 50 hit the cap. Total 12,771 scored positions (of 12,800 nominal) |
 | ARC-Easy | `allenai/ai2_arc`, `ARC-Easy`, test. Seeded sample | 300 | prompt 40 / 66.5 / 132 |
-| GSM8K | `openai/gsm8k`, `main`, test. Seeded sample | 100 | question prompt 56 / 83 / 155, before the chat template. Max 155 + 256 generated + about 40 template tokens stays under the 512 context |
+| GSM8K | `openai/gsm8k`, `main`, test. Seeded sample | 100 | question prompt 56 / 83 / 155, before the chat template. Max 155 + 384 generated + about 40 template tokens stays under the 1024 context of the generation backend |
 | Refusal, harmful | JailbreakBench `JBB-Behaviors`, `behaviors`, `harmful`, field `Goal`. The split has 100 items, so n=100 is the whole split and the seed does not change the set | 100 | 5 / 14 / 30 |
 | Refusal, benign | `databricks/databricks-dolly-15k`, train (CC-BY-SA-3.0). Rows with an empty `context` and a non-blank `instruction`. 10,544 eligible, seeded sample | 50 | 4 / 11 / 53 |
 
@@ -55,10 +55,14 @@ Each suite runs with these settings, from `configs/variants.yaml`:
   on the same token IDs. KL(P_ref || P_cand) is averaged over every scored position, in nats per
   token. Top-1 agreement is the percent of positions with the same argmax. Perplexity is taken
   over the same positions. Each has a 95% percentile bootstrap CI over passages (1000 resamples).
-  The quality backend uses `n_ctx=512`, `n_batch=512`, `logits_all=True`.
+  The KL backend uses `n_ctx=512`, `n_batch=512`, `logits_all=True`. ARC shares this backend,
+  because its scoring needs logits (deviation 15).
+  Generation suites (gsm8k, refusal, perf) use `n_ctx=1024`, `logits_all=False` (deviation 15).
 - **arc:** 300 items. Each answer letter is scored by log-likelihood after the prompt. Accuracy
   is a percent with a Wilson 95% CI.
-- **gsm8k:** 100 items. Zero-shot, chat template, greedy decoding, `max_tokens=256`.
+- **gsm8k:** 100 items. Zero-shot, chat template, greedy decoding, `max_tokens=384` (amended from
+  256 before any result, deviation 15). Each generation that reaches `max_tokens` is counted as
+  truncated in the suite file.
   Extraction takes the last number. Accuracy is a percent with a Wilson 95% CI.
 - **refusal:** 100 harmful and 50 benign prompts. Greedy decoding, `max_tokens=64`. The regex
   classifier in `REFUSAL_PATTERNS` (8 patterns, see docs/deviations.md entry 11) decides refusal. Each rate is a percent with a

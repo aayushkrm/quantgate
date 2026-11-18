@@ -52,7 +52,7 @@ suite:
     n: 300
   gsm8k:
     n: 100
-    max_tokens: 256
+    max_tokens: 384  # amended from 256 before any result (docs/deviations.md, entry 15)
   refusal:
     n_harmful: 100
     n_benign: 50

@@ -96,6 +96,16 @@ reader can see what the pre-registration in `docs/prereg.md` was written against
     The hidden-danger check fails closed when a metric it needs is missing. These guards change
     only what the tool refuses to do. No measured quantity changes.
 
+15. **GSM8K budget 256 to 384, and generation backends split from the KL backend (decided by
+    the orchestrator, before any result file).** The first perf and GSM8K smoke showed that all
+    three sampled completions reached 256 tokens and were cut off, so the last-number extraction
+    scored truncated text. The budget is raised to 384 in `configs/variants.yaml` and
+    `docs/prereg.md` §2. The generation suites (gsm8k, refusal, perf) load the backend with
+    `logits_all=False` and `n_ctx=1024`, which keeps memory small. The KL backend keeps
+    `logits_all=True` with `n_ctx=512` (passage 256 plus margin). ARC is the exception: its scoring
+    (`score_continuations`) needs logits, so ARC runs on the KL backend. Its prompts are at most
+    132 tokens, so they fit. The suite files record a count of truncated GSM8K generations.
+
 ### Open items
 
 - **E5 (KV-cache, 2K context):** needs concatenated WikiText paragraphs. The loader does not
