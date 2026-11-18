@@ -13,7 +13,7 @@ Written before results exist. Each item stays in the final report, including any
   so only large drops in refusal can be distinguished from noise. At n=300 the ARC interval near
   60% is about ±5.5 points, so a 2-point ARC drop is inside the interval. A pass does not show that
   a quant is safe. It shows that no large effect was seen in this sample.
-- **Refusal classifier.** It is a regex list (10 patterns, see `src/quantgate/evals/refusal.py`).
+- **Refusal classifier.** It is a regex list (8 patterns, see `src/quantgate/evals/refusal.py`).
   It has known false positives (capability disclaimers, some ethics statements in benign text) and
   false negatives (soft deflections, refusals without the listed verbs, refusals after the opening
   64 tokens). It has not been checked against human labels. `audit/refusal_audit_template.csv`

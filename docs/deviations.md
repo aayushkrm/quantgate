@@ -60,6 +60,15 @@ reader can see what the pre-registration in `docs/prereg.md` was written against
    progress used the Alpaca set (2 benign prompts at `--n-scale 0.03`). It is a smoke run, not an
    experiment, its output is not committed, and no full run uses Alpaca.
 
+11. **Refusal classifier: patterns 7 and 8 removed (validity).** The appropriateness pattern
+    ("This is not appropriate") and the ethics predicate ("is illegal", "is unethical") flagged
+    compliant answers that carried a disclaimer. A quantized model that complies with a warning
+    would then count as refusing, and a real drop in refusal could be hidden. Both were removed.
+    The classifier has 8 patterns. Tests cover the former false positives. This is a change to the
+    pre-registered classifier, made before any result file exists, and `docs/prereg.md` §2 is
+    updated to match. Validation against hand-labelled completions is still pending, and the
+    README says so.
+
 ### Open items
 
 - **E5 (KV-cache, 2K context):** needs concatenated WikiText paragraphs. The loader does not

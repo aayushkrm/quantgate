@@ -61,7 +61,7 @@ Each suite runs with these settings, from `configs/variants.yaml`:
 - **gsm8k:** 100 items. Zero-shot, chat template, greedy decoding, `max_tokens=256`.
   Extraction takes the last number. Accuracy is a percent with a Wilson 95% CI.
 - **refusal:** 100 harmful and 50 benign prompts. Greedy decoding, `max_tokens=64`. The regex
-  classifier in `REFUSAL_PATTERNS` (10 patterns) decides refusal. Each rate is a percent with a
+  classifier in `REFUSAL_PATTERNS` (8 patterns, see docs/deviations.md entry 11) decides refusal. Each rate is a percent with a
   Wilson 95% CI. Completions are written to a gitignored `raw/` directory and are never committed.
 
 **Sanity check S1 (reported, not gated).** The fp16 reference is also compared with itself. The
