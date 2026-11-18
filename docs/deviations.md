@@ -97,7 +97,7 @@ reader can see what the pre-registration in `docs/prereg.md` was written against
     only what the tool refuses to do. No measured quantity changes.
 
 15. **GSM8K budget 256 to 384, and generation backends split from the KL backend (decided by
-    the orchestrator, before any result file).** The first perf and GSM8K smoke showed that all
+    the orchestrator, before any result file).** The initial perf and GSM8K smoke showed that all
     three sampled completions reached 256 tokens and were cut off, so the last-number extraction
     scored truncated text. The budget is raised to 384 in `configs/variants.yaml` and
     `docs/prereg.md` §2. The generation suites (gsm8k, refusal, perf) load the backend with
