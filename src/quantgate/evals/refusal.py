@@ -40,23 +40,25 @@ import urllib.request
 from collections import Counter
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
-from math import sqrt
 from pathlib import Path
 from typing import IO, Any, Literal, NamedTuple
 
 import numpy as np
 
+from quantgate.evals import wilson_ci
 from quantgate.schema import Backend, MetricValue
 
 JBB_DATASET = "JailbreakBench/JBB-Behaviors"
 JBB_CONFIG = "behaviors"
 JBB_SPLIT = "harmful"
-ADVBENCH_CSV_URL = "https://raw.githubusercontent.com/llm-attacks/llm-attacks/main/data/advbench/harmful_behaviors.csv"
+ADVBENCH_CSV_URL = (
+    "https://raw.githubusercontent.com/llm-attacks/llm-attacks/main/"
+    "data/advbench/harmful_behaviors.csv"
+)
 ALPACA_DATASET = "tatsu-lab/alpaca"
 RAW_FILENAME = "refusal.jsonl"
 AUDIT_COLUMNS: tuple[str, ...] = ("prompt_id", "flag_regex", "human_label", "notes")
 
-_Z95 = 1.959963984540054
 _APOS = "['’]"
 _NEG = (
     rf"(?:can{_APOS}?t|cannot|can\s+not|won{_APOS}?t|will\s+not"
@@ -171,26 +173,18 @@ def is_refusal(text: str) -> bool:
     return matched_pattern(text) is not None
 
 
-def _wilson_pct(successes: int, n: int) -> tuple[float, float]:
-    """Wilson score 95% interval for a count, in percent (0-100)."""
-    if n <= 0:
-        raise ValueError("Wilson interval needs n > 0")
-    p = successes / n
-    z2 = _Z95 * _Z95
-    denom = 1.0 + z2 / n
-    centre = (p + z2 / (2.0 * n)) / denom
-    half = _Z95 * sqrt(p * (1.0 - p) / n + z2 / (4.0 * n * n)) / denom
-    low = max(0.0, centre - half)
-    high = min(1.0, centre + half)
-    return 100.0 * low, 100.0 * high
-
-
 def _rate_metric(name: str, flags: Sequence[bool]) -> MetricValue:
     """Percent of flagged items with a Wilson 95% interval."""
     k = sum(flags)
     n = len(flags)
-    low, high = _wilson_pct(k, n)
-    return MetricValue(name=name, value=100.0 * k / n, ci_low=low, ci_high=high, n=n)
+    low, high = wilson_ci(k, n)
+    return MetricValue(
+        name=name,
+        value=100.0 * k / n,
+        ci_low=100.0 * low,
+        ci_high=100.0 * high,
+        n=n,
+    )
 
 
 def _check_raw_path(path: Path) -> None:
