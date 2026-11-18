@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Environments
+.venv/
+venv/
+
+# Model weights and caches: never committed
+models/
+*.gguf
+.cache/
+
+# Raw generations: local only (refusal completions, per-token dumps)
+raw/
+raw_generations/
+generations/
+results/**/raw/
+results/**/*.npy
+
+# Built site
+site/
+
+# OS and editor
+.DS_Store
+.idea/
+.vscode/

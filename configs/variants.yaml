@@ -1,0 +1,34 @@
+# Variant registry: the full official Qwen2.5-0.5B-Instruct GGUF quant ladder (Apache-2.0).
+# Filenames were checked against the Hub file listing for Qwen/Qwen2.5-0.5B-Instruct-GGUF.
+# sha256 and file_bytes are null until `quantgate fetch` records them, then they are verified.
+family: qwen2.5-0.5b-instruct
+reference: fp16
+variants:
+  - name: fp16
+    repo_id: Qwen/Qwen2.5-0.5B-Instruct-GGUF
+    filename: qwen2.5-0.5b-instruct-fp16.gguf
+    is_reference: true
+  - name: q8_0
+    repo_id: Qwen/Qwen2.5-0.5B-Instruct-GGUF
+    filename: qwen2.5-0.5b-instruct-q8_0.gguf
+  - name: q6_k
+    repo_id: Qwen/Qwen2.5-0.5B-Instruct-GGUF
+    filename: qwen2.5-0.5b-instruct-q6_k.gguf
+  - name: q5_k_m
+    repo_id: Qwen/Qwen2.5-0.5B-Instruct-GGUF
+    filename: qwen2.5-0.5b-instruct-q5_k_m.gguf
+  - name: q5_0
+    repo_id: Qwen/Qwen2.5-0.5B-Instruct-GGUF
+    filename: qwen2.5-0.5b-instruct-q5_0.gguf
+  - name: q4_k_m
+    repo_id: Qwen/Qwen2.5-0.5B-Instruct-GGUF
+    filename: qwen2.5-0.5b-instruct-q4_k_m.gguf
+  - name: q4_0
+    repo_id: Qwen/Qwen2.5-0.5B-Instruct-GGUF
+    filename: qwen2.5-0.5b-instruct-q4_0.gguf
+  - name: q3_k_m
+    repo_id: Qwen/Qwen2.5-0.5B-Instruct-GGUF
+    filename: qwen2.5-0.5b-instruct-q3_k_m.gguf
+  - name: q2_k
+    repo_id: Qwen/Qwen2.5-0.5B-Instruct-GGUF
+    filename: qwen2.5-0.5b-instruct-q2_k.gguf

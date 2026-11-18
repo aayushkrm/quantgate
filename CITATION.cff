@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use quantgate, please cite it as below."
+type: software
+title: "quantgate"
+abstract: "A CI gate for quantized GGUF models: measures KL drift, task accuracy, refusal behaviour and CPU speed for every quant level, and fails when a quant is quietly worse."
+version: 0.1.0
+license: MIT
+authors:
+  - family-names: Kumar
+    given-names: Ayush
+repository-code: "https://github.com/aayushkrm/quantgate"
+keywords:
+  - quantization
+  - GGUF
+  - llama.cpp
+  - evaluation
+  - continuous integration

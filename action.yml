@@ -1,0 +1,33 @@
+name: "quantgate gate"
+description: "Apply the quantgate gate policy to a committed QuantReport JSON. Fails the job when a quant regresses."
+author: "Ayush Kumar"
+branding:
+  icon: "check-circle"
+  color: "gray-dark"
+
+inputs:
+  report:
+    description: "Path to the QuantReport JSON, relative to the repository root."
+    required: false
+    default: "results/report.json"
+  policy:
+    description: "Path to the gate policy YAML, relative to the repository root."
+    required: false
+    default: "configs/gate.yaml"
+
+runs:
+  using: "composite"
+  steps:
+    - uses: astral-sh/setup-uv@v5
+      shell: bash
+    - name: Install quantgate from this action's repository
+      shell: bash
+      env:
+        QG_ACTION_PATH: ${{ github.action_path }}
+      run: uv tool install "$QG_ACTION_PATH"
+    - name: Run quantgate gate
+      shell: bash
+      env:
+        QG_REPORT: ${{ inputs.report }}
+        QG_POLICY: ${{ inputs.policy }}
+      run: quantgate gate "$QG_REPORT" --policy "$QG_POLICY"
