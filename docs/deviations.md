@@ -69,6 +69,16 @@ reader can see what the pre-registration in `docs/prereg.md` was written against
     updated to match. Validation against hand-labelled completions is still pending, and the
     README says so.
 
+12. **Perf procedure: full-length decode, n-1 gaps, prompt token count (measurement).** The
+    perf smoke on q4_k_m (2026-11-19, AC power) stopped at 27 of the 128 requested tokens, so
+    the decode rate rested on a short generation. Perf now uses `generate_fixed_length`, which
+    suppresses the end-of-sequence tokens with a logit bias of -100. The perf output records
+    `gen_fixed_length`. Decode tok/s is computed over the n-1 gaps between the first and the last
+    token, not over n tokens (review Q7). The 512-token budget in `docs/prereg.md` §3 applies to
+    the text before the chat template. The templated prompt measured 541 tokens (p50). The
+    prefill rate uses the counted tokens, so it stays correct. The smoke numbers are not results,
+    and no full run has started with this procedure.
+
 ### Open items
 
 - **E5 (KV-cache, 2K context):** needs concatenated WikiText paragraphs. The loader does not

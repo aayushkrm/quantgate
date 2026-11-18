@@ -187,6 +187,47 @@ class LlamaCppBackend:
         n_gen_tokens counts content chunks with no finish_reason, one per sampled token.
         temperature=0 is greedy decoding. Verified against llm.n_tokens in the model smoke test.
         """
+        return self._generate(messages, max_tokens, temperature, seed, logit_bias=None)
+
+    def generate_fixed_length(
+        self,
+        messages: list[dict[str, str]],
+        n_tokens: int,
+        seed: int,
+    ) -> GenResult:
+        """Greedy generation that always produces n_tokens, with end-of-sequence suppressed.
+
+        Used by perf. A normal call can stop early at an end-of-sequence token, which made the
+        first perf smoke decode only 27 of 128 tokens. Here the end-of-sequence token ids get a
+        logit bias of -100, so the decode rate is measured over the full requested length.
+        """
+        return self._generate(
+            messages,
+            n_tokens,
+            0.0,
+            seed,
+            logit_bias={tok: -100.0 for tok in self._eos_token_ids()},
+        )
+
+    def _eos_token_ids(self) -> list[int]:
+        """Token ids that end a chat turn: the model's EOS and the Qwen chat end markers."""
+        llm = self._require()
+        ids: set[int] = {int(llm.token_eos())}
+        for marker in ("<|im_end|>", "<|endoftext|>"):
+            toks = llm.tokenize(marker.encode("utf-8"), add_bos=False, special=True)
+            if len(toks) == 1:
+                ids.add(int(toks[0]))
+        return sorted(ids)
+
+    def _generate(
+        self,
+        messages: list[dict[str, str]],
+        max_tokens: int,
+        temperature: float,
+        seed: int,
+        logit_bias: dict[int, float] | None,
+    ) -> GenResult:
+        """Shared streamed chat completion behind generate and generate_fixed_length."""
         llm = self._require()
         if max_tokens < 1:
             raise ValueError("max_tokens must be at least 1")
@@ -203,6 +244,7 @@ class LlamaCppBackend:
             temperature=temperature,
             seed=seed,
             stream=True,
+            logit_bias=logit_bias,
         )
         for chunk in stream:
             now = time.perf_counter()

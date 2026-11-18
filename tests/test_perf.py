@@ -91,7 +91,7 @@ class _TimedFake:
             n_prompt_tokens=n_prompt,
             n_gen_tokens=max_tokens,
             prefill_s=n_prompt / FAKE_PREFILL_TOK_S,
-            decode_s=max_tokens / FAKE_DECODE_TOK_S,
+            decode_s=(max_tokens - 1) / FAKE_DECODE_TOK_S,
         )
 
     def close(self) -> None:
@@ -146,7 +146,7 @@ def test_measure_in_process_flags_early_stop() -> None:
                 n_prompt_tokens=res.n_prompt_tokens,
                 n_gen_tokens=max_tokens // 2,
                 prefill_s=res.prefill_s,
-                decode_s=(max_tokens // 2) / FAKE_DECODE_TOK_S,
+                decode_s=(max_tokens // 2 - 1) / FAKE_DECODE_TOK_S,
             )
 
     metrics = measure_in_process(_Short(), _cfg(warmup=0, repeats=2))
@@ -441,3 +441,53 @@ def test_run_perf_subprocess_adds_top_level_rss(monkeypatch: pytest.MonkeyPatch)
     metrics = run_perf_subprocess(Path("m.gguf"), _cfg(warmup=0, repeats=1))
     assert metrics[perf.PEAK_RSS_KEY] == 123456.0
     assert metrics["decode_tok_s_p50"] == 2.0
+
+
+def test_measure_in_process_uses_fixed_length_generation_when_available() -> None:
+    class _Fixed(_TimedFake):
+        def __init__(self) -> None:
+            super().__init__()
+            self.fixed_calls = 0
+
+        def generate_fixed_length(self, messages, n_tokens, seed):  # type: ignore[no-untyped-def]
+            self.fixed_calls += 1
+            return GenResult(
+                text="x",
+                n_prompt_tokens=PROMPT_TOKENS,
+                n_gen_tokens=n_tokens,
+                prefill_s=PROMPT_TOKENS / FAKE_PREFILL_TOK_S,
+                decode_s=(n_tokens - 1) / FAKE_DECODE_TOK_S,
+            )
+
+    backend = _Fixed()
+    metrics = measure_in_process(backend, _cfg(warmup=0, repeats=3))
+    assert backend.fixed_calls == 3
+    assert backend.generate_calls == 0
+    assert metrics["gen_fixed_length"] == 1.0
+    assert metrics["gen_short"] == 0.0
+    assert metrics["decode_tok_s_p50"] == pytest.approx(FAKE_DECODE_TOK_S)
+
+
+def test_decode_rate_spans_n_minus_one_gaps() -> None:
+    """Q7: n tokens need n - 1 gaps between the first and the last token."""
+
+    class _Gaps(_TimedFake):
+        def generate(self, messages, max_tokens, temperature, seed):  # type: ignore[no-untyped-def]
+            self.generate_calls += 1
+            return GenResult(
+                text="x", n_prompt_tokens=3, n_gen_tokens=5, prefill_s=0.01, decode_s=4 / 10.0
+            )
+
+    metrics = measure_in_process(_Gaps(), _cfg(warmup=0, repeats=1))
+    assert metrics["decode_tok_s_p50"] == pytest.approx(10.0)
+
+
+def test_measure_in_process_rejects_a_single_generated_token() -> None:
+    class _One(_TimedFake):
+        def generate(self, messages, max_tokens, temperature, seed):  # type: ignore[no-untyped-def]
+            return GenResult(
+                text="x", n_prompt_tokens=3, n_gen_tokens=1, prefill_s=0.01, decode_s=0.01
+            )
+
+    with pytest.raises(ValueError, match="fewer than 2"):
+        measure_in_process(_One(), _cfg(warmup=0, repeats=1))

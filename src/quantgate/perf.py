@@ -34,7 +34,7 @@ import sys
 from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Protocol, cast, runtime_checkable
 
 from quantgate.backend import LlamaCppBackend
 from quantgate.schema import Backend, GenResult, PerfConfig
@@ -209,6 +209,17 @@ def _rate(count: int, seconds: float, what: str) -> float:
     return count / seconds
 
 
+@runtime_checkable
+class FixedLengthBackend(Protocol):
+    """A backend that can generate exactly n tokens with end-of-sequence suppressed (perf only)."""
+
+    def generate_fixed_length(
+        self, messages: list[dict[str, str]], n_tokens: int, seed: int
+    ) -> GenResult:
+        """Greedy generation of exactly n_tokens, end-of-sequence suppressed."""
+        ...
+
+
 def measure_in_process(backend: Backend, cfg: PerfConfig) -> dict[str, float]:
     """Warm-up runs, then repeats. Timings come from GenResult.prefill_s and decode_s.
 
@@ -220,8 +231,11 @@ def measure_in_process(backend: Backend, cfg: PerfConfig) -> dict[str, float]:
         raise ValueError("repeats must be positive")
     text = build_prompt_text(backend, cfg.prompt_tokens)
     messages = [{"role": "user", "content": text}]
+    fixed = isinstance(backend, FixedLengthBackend)
 
     def run() -> GenResult:
+        if isinstance(backend, FixedLengthBackend):
+            return backend.generate_fixed_length(messages, n_tokens=cfg.gen_tokens, seed=0)
         return backend.generate(messages, max_tokens=cfg.gen_tokens, temperature=0.0, seed=0)
 
     for _ in range(cfg.warmup):
@@ -234,10 +248,11 @@ def measure_in_process(backend: Backend, cfg: PerfConfig) -> dict[str, float]:
     n_gen: list[int] = []
     for _ in range(cfg.repeats):
         res = run()
-        if res.n_gen_tokens <= 0:
-            raise ValueError("backend generated no tokens; decode rate is undefined")
+        if res.n_gen_tokens < 2:
+            raise ValueError("backend generated fewer than 2 tokens; decode rate is undefined")
         prefill_tok_s.append(_rate(res.n_prompt_tokens, res.prefill_s, "prefill"))
-        decode_tok_s.append(_rate(res.n_gen_tokens, res.decode_s, "decode"))
+        # decode_s runs from the first token to the last, so it spans n_gen - 1 gaps (Q7).
+        decode_tok_s.append(_rate(res.n_gen_tokens - 1, res.decode_s, "decode"))
         prefill_s.append(res.prefill_s)
         n_prompt.append(res.n_prompt_tokens)
         n_gen.append(res.n_gen_tokens)
@@ -250,6 +265,7 @@ def measure_in_process(backend: Backend, cfg: PerfConfig) -> dict[str, float]:
     out["n_gen_tokens_min"] = float(min(n_gen))
     out["n_gen_tokens_max"] = float(max(n_gen))
     out["gen_short"] = 1.0 if min(n_gen) < cfg.gen_tokens else 0.0
+    out["gen_fixed_length"] = 1.0 if fixed else 0.0
     out["warmup"] = float(cfg.warmup)
     out["repeats"] = float(cfg.repeats)
     return out
