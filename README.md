@@ -29,7 +29,7 @@ q4_0, q3_k_m, q2_k):
 - **ARC-Easy** accuracy (300 items, letter log-likelihood).
 - **GSM8K** accuracy (100 items, greedy, last-number extraction).
 - **Refusal** on 100 harmful prompts (JailbreakBench) and over-refusal on 50 benign prompts
-  (Alpaca instructions), with a published regex classifier.
+  (Dolly-15k instructions with an empty context field), with a published regex classifier.
 - **CPU speed and memory**: prefill and decode tok/s, and peak RSS, one fresh subprocess per
   variant, run last on an idle machine.
 
@@ -126,15 +126,15 @@ The gate thresholds in `configs/gate.yaml` are the pre-registered values.
 | Qwen2.5-0.5B-Instruct GGUF | Apache-2.0 | Hugging Face metadata; the card text does not state it |
 | GSM8K (`openai/gsm8k`) | MIT | Metadata and card text |
 | ARC-Easy (`allenai/ai2_arc`) | CC-BY-SA-4.0 | Metadata; the card's licensing section is empty |
-| WikiText-2 (`Salesforce/wikitext`) | CC-BY-SA-3.0 and GFDL in metadata; CC-BY-SA-4.0 in card text | The metadata and card disagree. Unresolved |
+| WikiText-2 (`Salesforce/wikitext`) | CC-BY-SA-4.0 per the dataset card text (cited: huggingface.co/datasets/Salesforce/wikitext). The metadata says CC-BY-SA-3.0 and GFDL | The two disagree. Unresolved, see `docs/limitations.md` |
 | JailbreakBench `JBB-Behaviors` (harmful prompts) | MIT | Metadata and card text |
 | AdvBench (fallback harmful prompts only) | llm-attacks repository is MIT | Terms of the data file not separately checked |
-| Alpaca (`tatsu-lab/alpaca`, benign prompts) | CC-BY-NC-4.0 (non-commercial) | Metadata and card text. Open question, see below |
+| Dolly-15k (`databricks/databricks-dolly-15k`, benign prompts) | CC-BY-SA-3.0 | Metadata and card text (License section) |
 | quantgate (this code) | MIT | `LICENSE` |
 
-The benign prompts come from Alpaca. Its licence is non-commercial. The prompts are used only as
-inputs to an evaluation, and no dataset text is committed. Whether that is acceptable for this
-project is for the owner to decide.
+The benign prompts come from Dolly-15k, using rows with an empty context field. Its licence is
+CC-BY-SA-3.0. The prompts are used as inputs to an evaluation, and no dataset text is committed.
+The Alpaca set was replaced because its licence is non-commercial (see `docs/deviations.md`, entry 10).
 
 ## How this was built
 

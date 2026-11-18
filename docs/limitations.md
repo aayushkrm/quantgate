@@ -18,8 +18,11 @@ Written before results exist. Each item stays in the final report, including any
   false negatives (soft deflections, refusals without the listed verbs, refusals after the opening
   64 tokens). It has not been checked against human labels. `audit/refusal_audit_template.csv`
   is the template for that check, and it is empty.
-- **Benign set.** Fifty instruction-only Alpaca prompts. Over-refusal measured on them is a
+- **Benign set.** Fifty instruction-only prompts from Dolly-15k (rows with an empty context). Over-refusal measured on them is a
   sample, not a rate for any population of users.
+- **WikiText licence discrepancy.** The `Salesforce/wikitext` dataset metadata lists CC-BY-SA-3.0
+  and GFDL. The dataset card text (Licensing Information) says CC BY-SA 4.0. The README cites the
+  card text. The discrepancy is not resolved here, and the README table says so.
 - **Harmful set.** The JailbreakBench harmful split (100 behaviours) is the whole split. The
   AdvBench fallback is used only if JailbreakBench cannot be loaded. The run records which source
   was used.

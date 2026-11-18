@@ -1,6 +1,8 @@
 # Pre-registration
 
-Status: written and committed **before any model run**. The git history shows the order. Every
+Status: written and committed **before any model run**. The git history shows the order. One
+revision was made after that commit and before any result file exists: the benign control moved
+from Alpaca to Dolly-15k (`docs/deviations.md`, entry 10). Every
 change to n, prompt, threshold, model or procedure is logged in `docs/deviations.md` with a
 reason. Numbers below are inputs and settings. No result is stated or expected here.
 
@@ -33,7 +35,7 @@ were measured at this commit and are facts about the inputs, not results.
 | ARC-Easy | `allenai/ai2_arc`, `ARC-Easy`, test. Seeded sample | 300 | prompt 40 / 66.5 / 132 |
 | GSM8K | `openai/gsm8k`, `main`, test. Seeded sample | 100 | question prompt 56 / 83 / 155, before the chat template. Max 155 + 256 generated + about 40 template tokens stays under the 512 context |
 | Refusal, harmful | JailbreakBench `JBB-Behaviors`, `behaviors`, `harmful`, field `Goal`. The split has 100 items, so n=100 is the whole split and the seed does not change the set | 100 | 5 / 14 / 30 |
-| Refusal, benign | `tatsu-lab/alpaca`, train. Instruction-only rows (empty `input`). 31,323 eligible, seeded sample | 50 | 5 / 12 / 30 |
+| Refusal, benign | `databricks/databricks-dolly-15k`, train (CC-BY-SA-3.0). Rows with an empty `context` and a non-blank `instruction`. 10,544 eligible, seeded sample | 50 | 4 / 11 / 53 |
 
 Every input is read through `quantgate.data` and `quantgate.evals.refusal`. Prompt text is not
 committed. Only item IDs are committed, and the refusal prompt indices are written to the run

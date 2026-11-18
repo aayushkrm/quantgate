@@ -50,9 +50,22 @@ reader can see what the pre-registration in `docs/prereg.md` was written against
    not in `results/`, and are not committed. They are used only to check that the pipeline works.
    Their numbers inform no threshold or n.
 
+10. **Benign control changed from Alpaca to Dolly-15k (licence).** `tatsu-lab/alpaca` is
+   CC-BY-NC-4.0, which is non-commercial. Its card and metadata were checked on 2026-11-19. The
+   owner's decision was to replace it. The replacement is `databricks/databricks-dolly-15k`,
+   CC-BY-SA-3.0, checked against the card and metadata. The benign set is the seeded sample of
+   50 rows (seed 0) with an empty `context` and a non-blank `instruction`. There are 10,544
+   eligible rows. Ids are `dolly-<index>`. Made after the pre-registration commit and before any
+   result file exists. `docs/prereg.md` §1 is revised to match. The smoke run that was already in
+   progress used the Alpaca set (2 benign prompts at `--n-scale 0.03`). It is a smoke run, not an
+   experiment, its output is not committed, and no full run uses Alpaca.
+
 ### Open items
 
 - **E5 (KV-cache, 2K context):** needs concatenated WikiText paragraphs. The loader does not
   produce them yet. E5 is dropped unless that is implemented, and the drop is logged here.
+- **WikiText licence discrepancy (not a deviation).** The dataset metadata lists CC-BY-SA-3.0 and
+  GFDL. The dataset card text says CC-BY-SA-4.0. The card text is cited in the README and the
+  discrepancy is flagged in `docs/limitations.md`.
 - **Harmful prompts:** the JBB harmful split has exactly 100 items, so the "100 sample" is the
   whole split. This is a fact of the dataset, not a deviation.
