@@ -1,0 +1,60 @@
+{
+  "note": "Written by `quantgate fetch`. Observed sha256 and size of each GGUF, checked against the Hub. Used when configs/variants.yaml has null pins. Do not edit by hand.",
+  "schema_version": "1",
+  "variants": {
+    "fp16": {
+      "file_bytes": 1266425696,
+      "filename": "qwen2.5-0.5b-instruct-fp16.gguf",
+      "repo_id": "Qwen/Qwen2.5-0.5B-Instruct-GGUF",
+      "sha256": "8e0ae26000627ed62de0e78e41860af70094558b9d2913385c842a6aa06cf3fc"
+    },
+    "q2_k": {
+      "file_bytes": 415182688,
+      "filename": "qwen2.5-0.5b-instruct-q2_k.gguf",
+      "repo_id": "Qwen/Qwen2.5-0.5B-Instruct-GGUF",
+      "sha256": "9ee36184e616dfc76df4f5dd66f908dbde6979524ae36e6cefb67f532f798cb8"
+    },
+    "q3_k_m": {
+      "file_bytes": 432041824,
+      "filename": "qwen2.5-0.5b-instruct-q3_k_m.gguf",
+      "repo_id": "Qwen/Qwen2.5-0.5B-Instruct-GGUF",
+      "sha256": "590d2479d401db206fe12a4562294d2de6211e06338a6e34fbad64b32f1469d0"
+    },
+    "q4_0": {
+      "file_bytes": 428730208,
+      "filename": "qwen2.5-0.5b-instruct-q4_0.gguf",
+      "repo_id": "Qwen/Qwen2.5-0.5B-Instruct-GGUF",
+      "sha256": "7671c0c304e6ce5a7fc577bcb12aba01e2c155cc2efd29b2213c95b18edaf6ed"
+    },
+    "q4_k_m": {
+      "file_bytes": 491400032,
+      "filename": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+      "repo_id": "Qwen/Qwen2.5-0.5B-Instruct-GGUF",
+      "sha256": "74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db"
+    },
+    "q5_0": {
+      "file_bytes": 490475360,
+      "filename": "qwen2.5-0.5b-instruct-q5_0.gguf",
+      "repo_id": "Qwen/Qwen2.5-0.5B-Instruct-GGUF",
+      "sha256": "925946ab27801fea3eead42933f857b6449c6d299f062e374cee2ac48426f2a5"
+    },
+    "q5_k_m": {
+      "file_bytes": 522186592,
+      "filename": "qwen2.5-0.5b-instruct-q5_k_m.gguf",
+      "repo_id": "Qwen/Qwen2.5-0.5B-Instruct-GGUF",
+      "sha256": "041474553fcabfc2a2d67903f9d2c2e50bd92528e670da4f33b5d0ce6e59fd55"
+    },
+    "q6_k": {
+      "file_bytes": 650379104,
+      "filename": "qwen2.5-0.5b-instruct-q6_k.gguf",
+      "repo_id": "Qwen/Qwen2.5-0.5B-Instruct-GGUF",
+      "sha256": "2f82233630c349ccf6b8daccf48f9a7865713d9f08a2eadfa456cebe9b97c7f5"
+    },
+    "q8_0": {
+      "file_bytes": 675710816,
+      "filename": "qwen2.5-0.5b-instruct-q8_0.gguf",
+      "repo_id": "Qwen/Qwen2.5-0.5B-Instruct-GGUF",
+      "sha256": "ca59ca7f13d0e15a8cfa77bd17e65d24f6844b554a7b6c12e07a5f89ff76844e"
+    }
+  }
+}
