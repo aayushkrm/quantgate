@@ -34,6 +34,15 @@ LAPTOP_START = "<!-- laptop:start -->"
 LAPTOP_END = "<!-- laptop:end -->"
 POWER_START = "<!-- power:start -->"
 POWER_END = "<!-- power:end -->"
+INTERP_START = "<!-- interpretation:start -->"
+INTERP_END = "<!-- interpretation:end -->"
+AUDIT_START = "<!-- audit:start -->"
+AUDIT_END = "<!-- audit:end -->"
+LIMIT_AUDIT_START = "<!-- audit-validation:start -->"
+LIMIT_AUDIT_END = "<!-- audit-validation:end -->"
+LIMITATIONS = REPO / "docs" / "limitations.md"
+AUDIT_SCORE = REPO / "results" / "audit" / "refusal_audit_score.json"
+AUDIT_LABELS = REPO / "audit" / "refusal_audit_ai_labels.csv"
 
 BANNED = (
     "production-ready",
@@ -57,6 +66,12 @@ from quantgate.headline import (  # noqa: E402
     headline_text,
     load_bandwidth,
     write_headline,
+)
+from quantgate.interpret import (  # noqa: E402
+    audit_validation_block,
+    interpretation_block,
+    load_audit,
+    privacy_problems,
 )
 from quantgate.report import (  # noqa: E402
     load_report,
@@ -166,6 +181,39 @@ def power_block() -> str:
     return "\n".join(lines) + "\n"
 
 
+def _replace_between(text: str, start_marker: str, end_marker: str, body: str) -> str:
+    """Replace the text between two markers with body, which always ends with a newline.
+
+    Raises ValueError if the markers are missing or out of order.
+    """
+    start = text.find(start_marker)
+    end = text.find(end_marker)
+    if start == -1 or end == -1 or end < start:
+        raise ValueError(f"file must contain {start_marker} and {end_marker} in order")
+    head = text[: start + len(start_marker)]
+    if not body.endswith("\n"):
+        body += "\n"
+    return f"{head}\n{body}{text[end:]}"
+
+
+def render_interpretation_body(report: QuantReport | None, bandwidth: dict | None) -> str:
+    if report is None:
+        return "_No results are committed yet, so there is no interpretation._\n"
+    return interpretation_block(report, bandwidth)
+
+
+def render_audit_body(audit: tuple[dict, list[dict[str, str]]] | None) -> str:
+    if audit is None:
+        return "_No refusal-classifier validation is committed yet._\n"
+    score, labels = audit
+    return audit_validation_block(score, labels)
+
+
+def render_limitations(text: str, audit: tuple[dict, list[dict[str, str]]] | None) -> str:
+    """docs/limitations.md with the validation block replaced from the score JSON and labels."""
+    return _replace_between(text, LIMIT_AUDIT_START, LIMIT_AUDIT_END, render_audit_body(audit))
+
+
 def render_power(text: str) -> str:
     """README text with the power block between its markers replaced. Raises if absent."""
     start = text.find(POWER_START)
@@ -182,15 +230,20 @@ def render_blocks(report: QuantReport | None) -> tuple[str, str]:
     return results, laptop_answer(report)
 
 
-def render_readme(text: str, report: QuantReport | None) -> str:
-    """README text with both generated blocks replaced. Raises ValueError if a marker is absent."""
+def render_readme(
+    text: str,
+    report: QuantReport | None,
+    bandwidth: dict | None = None,
+    audit: tuple[dict, list[dict[str, str]]] | None = None,
+) -> str:
+    """README text with every generated block replaced. Raises ValueError if a marker is absent."""
     results, laptop = render_blocks(report)
     text = render_power(update_readme(text, results))
-    start = text.find(LAPTOP_START)
-    end = text.find(LAPTOP_END)
-    if start == -1 or end == -1 or end < start:
-        raise ValueError(f"README must contain {LAPTOP_START} and {LAPTOP_END} in order")
-    return text[: start + len(LAPTOP_START)] + "\n" + laptop + text[end:]
+    text = _replace_between(text, LAPTOP_START, LAPTOP_END, laptop)
+    text = _replace_between(
+        text, INTERP_START, INTERP_END, render_interpretation_body(report, bandwidth)
+    )
+    return _replace_between(text, AUDIT_START, AUDIT_END, render_audit_body(audit))
 
 
 def banned_word_hits(paths: list[Path]) -> list[str]:
@@ -255,13 +308,16 @@ def main(argv: list[str] | None = None) -> int:
     report = load_report(REPORT) if REPORT.is_file() else None
     bandwidth = load_bandwidth(BANDWIDTH)
     expected = build_headline(report, bandwidth)
+    audit = load_audit(AUDIT_SCORE, AUDIT_LABELS)
 
     if args.headline:
         return _write_or_check_headline(expected, check=False)
 
     current = README.read_text(encoding="utf-8")
+    current_lim = LIMITATIONS.read_text(encoding="utf-8")
     try:
-        rendered = render_readme(current, report)
+        rendered = render_readme(current, report, bandwidth, audit)
+        rendered_lim = render_limitations(current_lim, audit)
     except ValueError as exc:
         print(f"render_readme: {exc}", file=sys.stderr)
         return 2
@@ -272,6 +328,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Rewrote {README.relative_to(REPO)}")
         else:
             print("README is up to date")
+        if rendered_lim != current_lim:
+            LIMITATIONS.write_text(rendered_lim, encoding="utf-8")
+            print(f"Rewrote {LIMITATIONS.relative_to(REPO)}")
         return _write_or_check_headline(expected, check=False)
 
     status = 0
@@ -280,6 +339,22 @@ def main(argv: list[str] | None = None) -> int:
             "README.md is out of date: run `uv run python scripts/render_readme.py`",
             file=sys.stderr,
         )
+        status = 1
+    if rendered_lim != current_lim:
+        print("docs/limitations.md is out of date: run the renderer", file=sys.stderr)
+        status = 1
+    committed = sorted(
+        [
+            *(REPO / "results").rglob("*.json"),
+            AUDIT_SCORE,
+            AUDIT_LABELS,
+            *(REPO / "audit").glob("*.csv"),
+        ]
+    )
+    problems = privacy_problems(committed)
+    for problem in problems:
+        print(f"privacy: {problem}", file=sys.stderr)
+    if problems:
         status = 1
     status = max(status, _write_or_check_headline(expected, check=True))
     banned_paths = [README, *sorted(DOCS.glob("*.md"))]

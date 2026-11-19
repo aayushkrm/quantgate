@@ -15,6 +15,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from quantgate.gate import variant_size_bytes
+from quantgate.perf import bandwidth_ceiling_check
 from quantgate.schema import QuantReport, VariantResult
 
 HEADLINE_SCHEMA_VERSION = "1"
@@ -280,13 +282,35 @@ def _bandwidth_item(bandwidth: Mapping[str, Any]) -> HeadlineItem | None:
         id="bandwidth_ceiling",
         label="Decode bandwidth against measured memory bandwidth",
         value=f"{implied:.2f} GB/s implied vs {measured:.2f} GB/s measured",
-        detail=f"Ratio {ratio:.2f}: {verdict}.",
+        detail=(
+            f"Ratio {ratio:.2f} for {bandwidth.get('ceiling_variant', 'the record')}: {verdict}. "
+            "Sanity check, not a measurement of its own."
+        ),
         n=None,
         ci=None,
         synthetic=bandwidth.get("synthetic") is True,
         featured=False,
         source=BANDWIDTH_SOURCE,
     )
+
+
+def _with_ceiling(bandwidth: Mapping[str, Any], report: QuantReport) -> Mapping[str, Any]:
+    """The bandwidth record with a ceiling check for the recommended variant, when the record has
+    none. The check is computed by quantgate.perf.bandwidth_ceiling_check and is labelled as a
+    sanity check. Without a recommended variant, decode or size, the record is used as is.
+    """
+    if bandwidth.get("ceiling_check") is not None or report.recommended is None:
+        return bandwidth
+    vr = _variant(report, report.recommended)
+    if vr is None or "decode_tok_s" not in vr.metrics:
+        return bandwidth
+    size = variant_size_bytes(vr)
+    copy, scale = bandwidth.get("copy_gb_s"), bandwidth.get("scale_gb_s")
+    if size is None or copy is None or scale is None:
+        return bandwidth
+    best = max(float(copy), float(scale))
+    check = bandwidth_ceiling_check(vr.metrics["decode_tok_s"].value, size, best)
+    return {**bandwidth, "ceiling_check": check, "ceiling_variant": report.recommended}
 
 
 def build_headline(
@@ -308,7 +332,7 @@ def build_headline(
         _q2_item(report),
     ]
     if bandwidth is not None:
-        candidates.append(_bandwidth_item(bandwidth))
+        candidates.append(_bandwidth_item(_with_ceiling(bandwidth, report)))
     items = [item for item in candidates if item is not None][:MAX_ITEMS]
     items = [item.model_copy(update={"featured": i < 3}) for i, item in enumerate(items)]
     return Headline(

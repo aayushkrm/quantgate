@@ -126,6 +126,17 @@ def _cell(metric: str, mv: MetricValue | None) -> str:
     return f"{text} (n={mv.n})"
 
 
+def _range_cell(metric: str, mv: MetricValue | None) -> str:
+    """One perf cell: value, then the min-max over repeats (not a CI), then n. Never hidden by the
+    CI rule, because a range over five repeats is what the perf table reports."""
+    if mv is None:
+        return "n/a"
+    text = _fmt(metric, mv.value)
+    if mv.ci_low is not None and mv.ci_high is not None:
+        text += f" [{_fmt(metric, mv.ci_low)}, {_fmt(metric, mv.ci_high)}]"
+    return f"{text} (n={mv.n})"
+
+
 def _present_metrics(report: QuantReport, group: Sequence[str], other: Sequence[str]) -> list[str]:
     """Metrics of one table: the group's known metrics present in any variant, in canonical order,
     then metrics that belong to neither group, sorted. The other group's metrics are excluded."""
@@ -159,7 +170,8 @@ def _perf_table(report: QuantReport) -> Table | None:
         return None
     headers = ["Variant", *(_title(m) for m in metrics)]
     rows = [
-        [vr.variant.name, *(_cell(m, vr.metrics.get(m)) for m in metrics)] for vr in report.variants
+        [vr.variant.name, *(_range_cell(m, vr.metrics.get(m)) for m in metrics)]
+        for vr in report.variants
     ]
     return Table(headers, rows)
 
