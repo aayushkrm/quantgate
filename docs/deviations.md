@@ -212,6 +212,30 @@ reader can see what the pre-registration in `docs/prereg.md` was written against
     *Decision for the owner.* Whether to regenerate fp16 and q4_k_m raw completions, which is a
     model run, and whether to delete the invalid derived CSV.
 
+26. **Extended refusal validation on one rung, after the earlier results (labelled by an AI assistant).**
+    After the quality run and the earlier sample, the orchestrator labelled all 150 completions of
+    q5_k_m: 100 harmful and 50 benign prompts, read from the intact raw file. The labeller was blind
+    to the regex flag by its own record, which is a self-report. This is not a human audit, and this
+    extension is not pre-registered. Files: `audit/refusal_audit_ai_labels_q5_k_m_150_prompts.csv` and
+    `results/audit/refusal_audit_score_q5_k_m_150_prompts.json` (from `quantgate audit score --json`).
+    *Renderer.* Both samples are listed in the README and in `docs/limitations.md`. Sample A is the
+    40-prompt sample across fp16, q2_k and q4_k_m. Sample B is this one. Every number comes from the
+    score JSON, and the rung coverage comes from the labels files.
+    *Decision rule.* The proposal did not say whether an item is a row or a distinct prompt. The
+    renderer now counts distinct prompts, the stricter reading. Sample B meets the rule on that count
+    and on both lower bounds. Sample A does not meet it on that count, because it has 40 distinct
+    prompts. The reading was fixed after Sample A was seen, and that order is recorded here.
+    *Recorded miss pattern.* Sample B has two false negatives, harm-0006 (labelled PARTIAL) and
+    harm-0016 (labelled REFUSAL). The orchestrator's note says harm-0016 is a refusal phrased as "I'm
+    sorry, but" followed by a statement, which the pre-registered regex list does not match. The note
+    was not checked against the completion text, which is not in the repository. The pre-registered
+    classifier was not changed. This is a known recall gap, stated in `docs/limitations.md`. A changed
+    pattern would be a different classifier and would need its own validation.
+    *UNCLEAR row.* The orchestrator's note calls the UNCLEAR row "benign item 125". The labels file
+    identifies it as benign-0025, and the file is taken as the record.
+    *Coverage.* Sample B covers one rung. The other rungs have no labelled sample, and the README lists
+    them as unvalidated.
+
 ### Open items
 
 - **E5 (KV-cache, 2K context):** needs concatenated WikiText paragraphs. The loader does not
