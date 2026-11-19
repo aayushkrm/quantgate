@@ -110,6 +110,50 @@ reader can see what the pre-registration in `docs/prereg.md` was written against
     p50 stayed within run-to-run noise (27.1 to 28.7 tok/s). Accuracy on that sample is still 0 of 3,
     so the budget change does not by itself fix GSM8K accuracy.
 
+16. **Report aggregation bug, found after the perf run (fixed, then regenerated).** A perf-only
+    `eval` invocation rebuilt `results/report.json` from the perf files alone. Every quality metric
+    then read as missing, and the gate failed closed with no recommendation. The run history in
+    `results/env.json` shows the two invocations. The merge now reads every suite file on disk,
+    whatever the invocation ran (commit `312137c`, with regression tests for both orders).
+    `results/report.json` was regenerated from the per-variant files with
+    `quantgate report results --rebuild`. That step ran no model. The report is the same as a single
+    run would give. The env block of the regenerated report carries the current git SHA, and the
+    quality invocation's SHA (`b799df3`) stays in `run_history`.
+
+17. **Refusal audit covers three variants, not nine.** The AI-assisted labelling sampled 40 prompts
+    from each of fp16, q4_k_m and q2_k (120 rows). It was not run on the other six rungs. The refusal
+    rates for those six have no label-based validation. The 120 rows are 40 distinct prompts, not
+    120 independent items. The validation block states this. The decision rule was written for
+    items, and it is reported on both readings (`docs/limitations.md`).
+
+18. **Refusal validation was done by an AI assistant, not a human.** The orchestrator labelled the
+    sample, blind to the regex flag by its own record. This is not a human audit. A human audit
+    needs `audit/refusal_audit_template.csv` to be filled in by the author. The README and
+    limitations say which one was done.
+
+19. **Scorer aligned with the committed labels file (tool fix, same numbers).** `quantgate audit
+    score` now reads the `regex_flagged` and `label` columns that the labels file uses, and it
+    reports distinct prompts and labelled rows per variant. Before this, the committed score JSON
+    could not be reproduced by the scorer on the committed file. It was regenerated with the fixed
+    tool. The counts match the orchestrator's figures: 67 true positives, 1 false negative, 51 true
+    negatives, no false positives, 1 UNCLEAR.
+
+20. **Bandwidth ratios above 1.0 were flagged, not repeated.** The E4 check (decode tok/s times file
+    size, against the measured copy or scale bandwidth) gives a ratio above 1.0 for fp16, q8_0 and
+    q6_k. The protocol (DECISION section 6) says such a run is repeated before it is reported. The
+    coordinator asked for no re-runs, so the result is reported with the ratios and flagged. The
+    bandwidth figure is a single measurement (5 repeats, best kept).
+
+21. **Perf settings as actually run.** Every variant ran alone on AC power (`env.json`
+    `power_at_start` shows AC). Each run used 2 warm-up runs and 5 repeats, 4 threads, a 512-token
+    text budget that counts 541 tokens with the chat template, and 128 generated tokens with the
+    end-of-sequence tokens suppressed (`gen_fixed_length`, entry 12). Brackets in the speed table are
+    min and max over the five repeats, not confidence intervals.
+
+22. **The quality ladder ran with the GSM8K budget of 384 and the generation backend split (entry 15).**
+    The suite files record `max_tokens` 384 in their diagnostics. Each candidate's own GSM8K file
+    counts its truncated generations.
+
 ### Open items
 
 - **E5 (KV-cache, 2K context):** needs concatenated WikiText paragraphs. The loader does not
