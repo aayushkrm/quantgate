@@ -290,9 +290,9 @@ def run_kl(
     if stats.n_nll.sum() == 0:
         raise ValueError("no passage has at least 2 tokens, so perplexity is undefined")
 
-    kl_mean = float(stats.kl_sum.sum() / stats.n_pos.sum())
-    top1_pct = float(100.0 * stats.top1_sum.sum() / stats.n_pos.sum())
-    ppl = float(np.exp(stats.nll_sum.sum() / stats.n_nll.sum()))
+    kl_mean = float(stats.kl_sum.sum()) / float(stats.n_pos.sum())
+    top1_pct = 100.0 * float(stats.top1_sum.sum()) / float(stats.n_pos.sum())
+    ppl = float(np.exp(float(stats.nll_sum.sum()) / float(stats.n_nll.sum())))
 
     kl_ci: tuple[float | None, float | None] = (None, None)
     top1_ci: tuple[float | None, float | None] = (None, None)

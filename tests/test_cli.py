@@ -2,6 +2,7 @@
 clean errors. Runs on SYNTHETIC fixtures only. No network, no model files."""
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,14 @@ from typer.testing import CliRunner
 from quantgate.cli import _perf_metrics, _take, app, load_suite_config, scale_suite
 from quantgate.report import load_report
 from quantgate.schema import Variant
+
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _plain(text: str) -> str:
+    """Strip ANSI styling: on CI the help text is colourised and splits option names."""
+    return _ANSI.sub("", text)
+
 
 runner = CliRunner()
 
@@ -39,7 +48,7 @@ def test_top_level_help_lists_every_command() -> None:
 def test_each_command_help(command: str) -> None:
     result = _invoke(command, "--help")
     assert result.exit_code == 0
-    assert "--json" in result.output
+    assert "--json" in _plain(result.output)
 
 
 # --- gate: exit codes on fixtures --------------------------------------------------------------
