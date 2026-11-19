@@ -163,8 +163,8 @@ reader can see what the pre-registration in `docs/prereg.md` was written against
     The quality invocation's dirty state is not recorded, and it is not claimed here. The
     environment record has no diff-digest field, so no digest of the uncommitted changes exists for
     these runs. Commits after `b799df3` changed the report aggregation and the audit scorer, as
-    entries 16 and 19 record. The README's provenance section states this. A re-run would give
-    comparable numbers, but it would not reproduce the same working tree.
+    entries 16 and 19 record. The README's provenance section states this. A re-run would not
+    reproduce these exact working trees, and no re-run has been done to test the numbers.
 
 24. **Documentation and renderer corrections found in pre-publication review.** The README and the
     laptop block labelled decode min to max over repeats as a 95% interval. They now say
