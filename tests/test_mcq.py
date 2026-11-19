@@ -17,7 +17,7 @@ from quantgate.evals.mcq import (
 
 
 class ScriptedScorer:
-    """Backend stub for score_continuations. It returns scripted scores per prompt, and the
+    """Scripted backend for score_continuations. It returns scripted scores per prompt, and the
     prompts it saw are recorded so the tests can check what was scored."""
 
     n_vocab = 4

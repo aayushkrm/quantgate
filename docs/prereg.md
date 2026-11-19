@@ -6,8 +6,7 @@ from Alpaca to Dolly-15k (`docs/deviations.md`, entry 10). Every
 change to n, prompt, threshold, model or procedure is logged in `docs/deviations.md` with a
 reason. Numbers below are inputs and settings. No result is stated or expected here.
 
-Source of defaults: `DECISION.md` §2.2 and `configs/variants.yaml` and `configs/gate.yaml` at this
-commit.
+Source of defaults: `configs/variants.yaml` and `configs/gate.yaml` at this commit.
 
 ## 0. What is fixed
 
@@ -157,9 +156,9 @@ number or the bandwidth number is wrong, and the run is repeated before anything
 
 Only if E1 to E4 are complete. KV-cache types `f16` (default), `q8_0` and `q4_0` on `q4_k_m`,
 using the ggml type constants from llama-cpp-python. The check reports KL at a longer context,
-plus peak RSS. **Status:** the 2K-context KL needs concatenated WikiText paragraphs, which the
-data loader does not yet produce. Without that change E5 is dropped and the drop is logged in
-`docs/deviations.md`.
+plus peak RSS. **Status (historical):** at the time of this pre-registration, the 2K-context KL needed
+concatenated WikiText paragraphs, which the data loader did not yet produce. Without that change
+E5 was to be dropped, and the drop is recorded in `docs/deviations.md`.
 
 ## 7. Analysis plan
 

@@ -353,7 +353,7 @@ def test_demo_text_output_is_labelled() -> None:
     assert "SYNTHETIC" in result.output
 
 
-# --- eval end to end on FakeBackend (real orchestration, no model files, no network) -----------
+# --- eval end to end on FakeBackend (real pipeline, no model files, no network) -----------
 
 
 @pytest.fixture
@@ -747,7 +747,7 @@ def test_gsm8k_counts_truncated_generations() -> None:
     assert result.correct == [True]
 
 
-def _stub_perf(monkeypatch: pytest.MonkeyPatch) -> None:
+def _fake_perf(monkeypatch: pytest.MonkeyPatch) -> None:
     """Perf with fixed metrics, no subprocess and no power probe (regression helper)."""
     from quantgate import cli as cli_module
 
@@ -778,7 +778,7 @@ def test_perf_only_invocation_keeps_every_quality_metric(
 ) -> None:
     """Regression: the second invocation (perf only) used to rebuild report.json from perf alone,
     so every quality metric read as missing and the gate failed closed."""
-    _stub_perf(monkeypatch)
+    _fake_perf(monkeypatch)
     quality = _invoke(*_eval_args(fake_eval, "--suite", "kl,arc,gsm8k,refusal", "--json"))
     assert quality.exit_code == 0, quality.output
     perf = _invoke(*_eval_args(fake_eval, "--suite", "perf", "--json"))
@@ -798,7 +798,7 @@ def test_report_is_the_same_whichever_order_the_suites_ran(
     fake_eval: dict[str, Path], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """Order independence: perf first, then quality, gives the same merged metrics."""
-    _stub_perf(monkeypatch)
+    _fake_perf(monkeypatch)
     first_out = fake_eval["out"]
     assert (
         _invoke(*_eval_args(fake_eval, "--suite", "kl,arc,gsm8k,refusal", "--json")).exit_code == 0
@@ -820,7 +820,7 @@ def test_report_is_the_same_whichever_order_the_suites_ran(
 def test_report_rebuild_regenerates_report_from_disk(
     fake_eval: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _stub_perf(monkeypatch)
+    _fake_perf(monkeypatch)
     assert (
         _invoke(*_eval_args(fake_eval, "--suite", "kl,arc,gsm8k,refusal", "--json")).exit_code == 0
     )

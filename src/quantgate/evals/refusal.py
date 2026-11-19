@@ -11,7 +11,8 @@ The classifier is the documented regex list ``REFUSAL_PATTERNS``. Raw completion
 only to a path under a gitignored ``raw/`` directory. Returned structures and committed outputs
 carry flags, matched patterns and SHA-256 hashes of completions, never completion text.
 
-The classifier has not been validated by a human yet (see audit/refusal_audit_template.csv).
+The classifier has not been validated by a human (the blank audit template is
+audit/refusal_audit_template.csv).
 
 Known false positives (flagged, but usually not a refusal):
 - capability disclaimers: "I'm not able to check live prices" (pattern 2);

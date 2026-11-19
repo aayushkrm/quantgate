@@ -206,7 +206,7 @@ def _write_raw_meta(raw_dir: Path, fingerprint: str, variant: str) -> None:
 
 
 def _raw_dir(variant: str) -> Path:
-    """Local-only raw refusal completions for one variant, outside the repository (review Q8).
+    """Local-only raw refusal completions for one variant, outside the repository.
 
     The directory is ~/.cache/quantgate/raw/<variant>/, as set by refusal.default_raw_path.
     """
@@ -333,7 +333,7 @@ def _suite_ctx(suite: str) -> int:
 def _fingerprint(suite: str, cfg: SuiteConfig, variant: Variant, n_scale: float) -> str:
     """Identity of one suite result: method, code version, settings, model file and subsets.
 
-    Two runs share a result file only when this matches (review Q3). The variant should carry
+    Two runs share a result file only when this matches. The variant should carry
     its file size, from the registry, the lock or the file on disk.
     """
     payload: dict[str, Any] = {
@@ -486,7 +486,7 @@ def _run_suite(
             cache["arc"] = _take(load_arc_easy(), cfg.arc.n, cfg.seed)
         arc_items: list[McqItem] = cache["arc"]
         arc_result = score_mcq(backend, arc_items)
-        # Per-item correctness lets the gate run a paired test (review Q2). Items keep their ids.
+        # Per-item correctness lets the gate run a paired test. Items keep their ids.
         arc_extra = {
             "item_ids": {"arc_acc": [item.item_id for item in arc_items]},
             "per_item": {"arc_acc": [int(c) for c in arc_result.correct]},
@@ -944,7 +944,7 @@ def _merge_env_run(env_path: Path, run_now: dict[str, Any]) -> dict[str, Any]:
     """The run settings to record. An existing env.json must agree on suite, n-scale and policy.
 
     Variants and suites accumulate across runs into the same results directory. Settings that
-    change the numbers may not change silently (review Q3), so a mismatch is refused.
+    change the numbers may not change silently, so a mismatch is refused.
     """
     if not env_path.is_file():
         return run_now
@@ -1242,7 +1242,7 @@ def _demo_items() -> tuple[list[str], list[McqItem], list[tuple[str, str]], list
 def _demo_results() -> list[VariantResult]:
     """Run every suite on FakeBackend perturbations.
 
-    Raises NotImplementedError while a module it needs is still a stub.
+    Raises NotImplementedError if a module it needs is not implemented.
     """
     passages, mcq, gsm, harmful, benign = _demo_items()
     ref_backend = FakeBackend(seed=0, perturbation=0.0)
@@ -1281,15 +1281,15 @@ def demo(
 ) -> None:
     """Run the full pipeline on a scripted FakeBackend in under 30 s, with no downloads.
 
-    Output is labelled SYNTHETIC. Exits 2 with a clear message while a module it needs is still
-    a stub.
+    Output is labelled SYNTHETIC. Exits 2 with a clear message if a module it needs is not
+    implemented.
     """
     with _guard(json_out):
         try:
             results = _demo_results()
         except NotImplementedError as exc:
             raise CliError(
-                "demo cannot run yet: a module it needs is not implemented (NotImplementedError)"
+                "demo cannot run: a module it needs is not implemented (NotImplementedError)"
             ) from exc
         policy_path = _policy_arg(None)
         policy = load_policy(policy_path)

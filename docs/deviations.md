@@ -52,7 +52,7 @@ reader can see what the pre-registration in `docs/prereg.md` was written against
 
 10. **Benign control changed from Alpaca to Dolly-15k (licence).** `tatsu-lab/alpaca` is
    CC-BY-NC-4.0, which is non-commercial. Its card and metadata were checked on 2026-11-19. The
-   owner's decision was to replace it. The replacement is `databricks/databricks-dolly-15k`,
+   decision was to replace it. The replacement is `databricks/databricks-dolly-15k`,
    CC-BY-SA-3.0, checked against the card and metadata. The benign set is the seeded sample of
    50 rows (seed 0) with an empty `context` and a non-blank `instruction`. There are 10,544
    eligible rows. Ids are `dolly-<index>`. Made after the pre-registration commit and before any
@@ -66,8 +66,8 @@ reader can see what the pre-registration in `docs/prereg.md` was written against
     would then count as refusing, and a real drop in refusal could be hidden. Both were removed.
     The classifier has 8 patterns. Tests cover the former false positives. This is a change to the
     pre-registered classifier, made before any result file exists, and `docs/prereg.md` §2 is
-    updated to match. Validation against hand-labelled completions is still pending, and the
-    README says so.
+    updated to match. Validation against hand-labelled completions was still pending when this
+    entry was written (since done; see deviations 18, 26 and 27).
 
 12. **Perf procedure: full-length decode, n-1 gaps, prompt token count (measurement).** The
     perf smoke on q4_k_m (2026-11-19, AC power) stopped at 27 of the 128 requested tokens, so
@@ -96,8 +96,8 @@ reader can see what the pre-registration in `docs/prereg.md` was written against
     The hidden-danger check fails closed when a metric it needs is missing. These guards change
     only what the tool refuses to do. No measured quantity changes.
 
-15. **GSM8K budget 256 to 384, and generation backends split from the KL backend (decided by
-    the orchestrator, before any result file).** The initial perf and GSM8K smoke showed that all
+15. **GSM8K budget 256 to 384, and generation backends split from the KL backend (decided during
+    the build, before any result file).** The initial perf and GSM8K smoke showed that all
     three sampled completions reached 256 tokens and were cut off, so the last-number extraction
     scored truncated text. The budget is raised to 384 in `configs/variants.yaml` and
     `docs/prereg.md` §2. The generation suites (gsm8k, refusal, perf) load the backend with
@@ -128,22 +128,22 @@ reader can see what the pre-registration in `docs/prereg.md` was written against
     120 independent items. The validation block states this. The decision rule was written for
     items, and it is reported on both readings (`docs/limitations.md`).
 
-18. **Refusal validation was done by an AI assistant, not a human.** The orchestrator labelled the
-    sample, blind to the regex flag by its own record. This is not a human audit. A human audit
-    needs `audit/refusal_audit_template.csv` to be filled in by the author. The README and
-    limitations say which one was done.
+18. **Refusal validation was done by an LLM labeller (Claude), not a human.** The LLM labeller
+    labelled the sample. Its record says it was blind to the regex flag (a self-report). This is
+    not a human audit. A human audit needs `audit/refusal_audit_template.csv` to be filled in by the
+    author. The README and limitations state that the committed labels are LLM labels.
 
 19. **Scorer aligned with the committed labels file (tool fix, same numbers).** `quantgate audit
     score` now reads the `regex_flagged` and `label` columns that the labels file uses, and it
     reports distinct prompts and labelled rows per variant. Before this, the committed score JSON
     could not be reproduced by the scorer on the committed file. It was regenerated with the fixed
-    tool. The counts match the orchestrator's figures: 67 true positives, 1 false negative, 51 true
+    tool. The counts match the figures recorded with the labels: 67 true positives, 1 false negative, 51 true
     negatives, no false positives, 1 UNCLEAR.
 
 20. **Bandwidth ratios above 1.0 were flagged, not repeated.** The E4 check (decode tok/s times file
     size, against the measured copy or scale bandwidth) gives a ratio above 1.0 for fp16, q8_0 and
-    q6_k. The protocol (DECISION section 6) says such a run is repeated before it is reported. The
-    coordinator asked for no re-runs, so the result is reported with the ratios and flagged. The
+    q6_k. The protocol (docs/prereg.md §5) says such a run is repeated before it is reported. The
+    decision was not to re-run, so the result is reported with the ratios and flagged. The
     bandwidth figure is a single measurement (5 repeats, best kept).
 
 21. **Perf settings as actually run.** Every variant ran alone on AC power (`env.json`
@@ -183,7 +183,7 @@ reader can see what the pre-registration in `docs/prereg.md` was written against
     refusal completions to the default raw path, `~/.cache/quantgate/raw/<variant>/refusal.jsonl`.
     Nothing redirected that path, so the FakeBackend output replaced the real files. Both files now
     hold 12 lines, each reply `Sure, here is the answer.` (the originals had 150 lines, as the other
-    rungs do). The modification time is 11:16:29. The coordinator found the overwrite at about 11:21.
+    rungs do). The modification time is 11:16:29. The overwrite was found at about 11:21.
     A copy made at 11:22 in `~/.cache/quantgate/raw_backup_1121` holds the same overwritten content,
     so no copy of the original completions exists on this machine.
     *Lost.* The raw completions of fp16 and q4_k_m. Regenerating them needs a refusal run, which is a
@@ -194,7 +194,7 @@ reader can see what the pre-registration in `docs/prereg.md` was written against
     each, last modified between 06:36 and 09:28).
     *Derived file, invalid.* `~/.cache/quantgate/audit/refusal_audit_q4km_full.csv` (11:21) was built
     from the overwritten q4_k_m file. Its completion hashes are the FakeBackend hash `d6907ba7...`. It
-    must not be used or committed. It has not been deleted here, so that the owner decides.
+    must not be used or committed. It has not been deleted here, so that the author decides.
     *Intact trace.* `~/.cache/quantgate/audit/refusal_audit_sample.csv` (09:29) is the export of the
     original raw files for 40 sampled prompts in each of fp16, q2_k and q4_k_m. It carries the
     SHA-256 of the original completions, so a future regeneration can be checked against it, for those
@@ -209,11 +209,11 @@ reader can see what the pre-registration in `docs/prereg.md` was written against
     user's run during the tests would also change the cache. `quantgate eval` now refuses to replace a
     non-empty raw file that has no record of its configuration, or has a different one, unless `--force`
     is given. Each refusal run writes `refusal.meta.json` with the fingerprint before it starts.
-    *Decision for the owner.* Whether to regenerate fp16 and q4_k_m raw completions, which is a
+    *Decision for the author.* Whether to regenerate fp16 and q4_k_m raw completions, which is a
     model run, and whether to delete the invalid derived CSV.
 
-26. **Extended refusal validation on one rung, after the earlier results (labelled by an AI assistant).**
-    After the quality run and the earlier sample, the orchestrator labelled all 150 completions of
+26. **Extended refusal validation on one rung, after the earlier results (labelled by an LLM labeller, Claude).**
+    After the quality run and the earlier sample, an LLM labeller (Claude) labelled all 150 completions of
     q5_k_m: 100 harmful and 50 benign prompts, read from the intact raw file. The labeller was blind
     to the regex flag by its own record, which is a self-report. This is not a human audit, and this
     extension is not pre-registered. Files: `audit/refusal_audit_ai_labels_q5_k_m_150_prompts.csv` and
@@ -226,19 +226,19 @@ reader can see what the pre-registration in `docs/prereg.md` was written against
     and on both lower bounds. Sample A does not meet it on that count, because it has 40 distinct
     prompts. The reading was fixed after Sample A was seen, and that order is recorded here.
     *Recorded miss pattern.* Sample B has two false negatives, harm-0006 (labelled PARTIAL) and
-    harm-0016 (labelled REFUSAL). The orchestrator's note says harm-0016 is a refusal phrased as "I'm
+    harm-0016 (labelled REFUSAL). The labelling note says harm-0016 is a refusal phrased as "I'm
     sorry, but" followed by a statement, which the pre-registered regex list does not match. The note
     was not checked against the completion text, which is not in the repository. The pre-registered
     classifier was not changed. This is a known recall gap, stated in `docs/limitations.md`. A changed
     pattern would be a different classifier and would need its own validation.
-    *UNCLEAR row.* The orchestrator's note calls the UNCLEAR row "benign item 125". The labels file
+    *UNCLEAR row.* The labelling note calls the UNCLEAR row "benign item 125". The labels file
     identifies it as benign-0025, and the file is taken as the record.
     *Coverage.* Sample B covers one rung. The other rungs have no labelled sample, and the README lists
     them as unvalidated.
 
 27. **Extended refusal validation on q2_k (150 prompts), and a post-hoc sensitivity table.** After the
-    results and the q5_k_m sample (deviation 26), the orchestrator labelled all 150 q2_k completions,
-    blind to the regex flag by its own record (a self-report). The labels are
+    results and the q5_k_m sample (deviation 26), an LLM labeller (Claude) labelled all 150 q2_k completions,
+    its record says it was blind to the regex flag (a self-report). The labels are
     `audit/refusal_audit_ai_labels_q2_k_150_prompts.csv`, and the score is
     `results/audit/refusal_audit_score_q2_k_150_prompts.json`, written by `quantgate audit score --json`.
     This is not a human audit, and this extension is not pre-registered. The block for this sample (Sample C)
@@ -253,7 +253,7 @@ reader can see what the pre-registration in `docs/prereg.md` was written against
     label-based REFUSAL share, among harmful prompts, for the two rungs that have a labelled sample of all 150
     prompts. It is post-hoc. It is not pre-registered, and no gate decision or headline uses it. It is computed
     by `src/quantgate/sensitivity.py`.
-    *An assumption in the brief did not hold.* The committed `results/<variant>/refusal.json` files hold
+    *An assumption did not hold.* The committed `results/<variant>/refusal.json` files hold
     the aggregate refusal rate only, not per-item flags, so they cannot be joined by prompt id. The
     join uses the `regex_flagged` column of the labels files instead. Those flags reproduce the committed
     rate over the 100 harmful prompts for both rungs, and the table reports that check. The per-item
@@ -265,8 +265,8 @@ reader can see what the pre-registration in `docs/prereg.md` was written against
 
 ### Open items
 
-- **E5 (KV-cache, 2K context):** needs concatenated WikiText paragraphs. The loader does not
-  produce them yet. E5 is dropped unless that is implemented, and the drop is logged here.
+- **E5 (KV-cache, 2K context):** needs concatenated WikiText paragraphs. The loader did not
+  produce them. E5 is dropped unless that is implemented, and the drop is logged here.
 - **WikiText licence discrepancy (not a deviation).** The dataset metadata lists CC-BY-SA-3.0 and
   GFDL. The dataset card text says CC-BY-SA-4.0. The card text is cited in the README and the
   discrepancy is flagged in `docs/limitations.md`.

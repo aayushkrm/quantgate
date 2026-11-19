@@ -18,7 +18,7 @@ benign prompts, and CPU decode and prefill speed with peak RSS. The output is
 - Reading or checking an existing report: `quantgate gate` and `quantgate report` only. Both are
   read-only apart from the output directory. Do this freely.
 - Running `quantgate eval`, or any code that loads a GGUF file: only on an explicit request from
-  the user. Runs are compute-queued, must follow `docs/prereg.md`, and perf runs must go last on an
+  the user. Runs take hours, must follow `docs/prereg.md`, and perf runs must go last on an
   idle machine on AC power. Never start one to "check that it works".
 - `quantgate demo` is safe at any time: scripted FakeBackend, no downloads, under 30 s.
 
@@ -53,7 +53,8 @@ Re-running after a crash resumes at the first missing file.
 
 ## Rules when working here
 
-1. `src/quantgate/schema.py` is frozen. If it needs a change, say so and stop. Do not edit it.
+1. Change `src/quantgate/schema.py` only with a `schema_version` decision and an entry in
+   `docs/deviations.md`.
 2. Never type a measured number into the README or docs. Numbers come from `quantgate report`,
    which renders committed JSON. `render_readme_block` writes the README block.
 3. Pre-register before running. `docs/prereg.md` must be committed before the first model run.
@@ -107,10 +108,9 @@ with dark text. SVG text stays as text.
 - Headline for the hub: `src/quantgate/headline.py` (schema `schemas/headline.schema.json`)
 - Report JSON, Markdown, HTML, README block: `src/quantgate/report.py`
 - Plots: `src/quantgate/plots.py`
-- CLI and eval orchestration: `src/quantgate/cli.py`
+- CLI and the eval loop: `src/quantgate/cli.py`
 - JSON schema, generated from the model: `schemas/quant_report.schema.json`. A test fails if it
-  differs from `QuantReport.model_json_schema()`. Regenerate it only after a schema change is
-  approved.
+  differs from `QuantReport.model_json_schema()`. Regenerate it after any schema change.
 - Default policy: `configs/gate.yaml`. Variant registry and the `suite:` section:
   `configs/variants.yaml`.
 - GitHub Action: `action.yml` (composite, runs `quantgate gate` on a committed report)

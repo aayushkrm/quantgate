@@ -413,7 +413,7 @@ def test_missing_quality_metric_fails_hidden_danger_closed() -> None:
     assert any(r.startswith(HIDDEN_MISSING_PREFIX) and "gsm8k_acc" in r for r in d.failed_rules)
 
 
-# --- significance: paired bootstrap, Wilson bounds, metric CI (review Q2) ----------------------
+# --- significance: paired bootstrap, Wilson bounds, metric CI ----------------------
 
 
 def _with_items(vr: VariantResult, metric: str, correct: list[int]) -> VariantResult:

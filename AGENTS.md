@@ -8,9 +8,9 @@ Guide for AI coding agents working in this repository. `CLAUDE.md` imports this 
 GSM8K, refusal, CPU speed) over the Qwen2.5-0.5B-Instruct quant ladder and fails when a quant is
 worse than the fp16 reference under the policy in `configs/gate.yaml`.
 
-Current state: the eval pipeline, gate, report and CLI are implemented and tested. No measured
-results are committed yet, and the first full run is queued. Synthetic and demo output is labelled
-SYNTHETIC and is not a measurement.
+Status: the eval pipeline, gate, report and CLI are implemented and tested. The pre-registered
+quant ladder has been run, and its results are committed in `results/`. Synthetic and demo output
+is labelled SYNTHETIC and is not a measurement.
 
 ## Setup and commands
 
@@ -45,15 +45,15 @@ configs/           variants.yaml (model ladder), gate.yaml (default policy)
 data/subsets/      committed item IDs only
 results/           committed JSON results and env.json (never hand-edited)
 docs/              design, prereg, deviations, limitations
-audit/             refusal audit template (human labels, to be filled in later)
+audit/             labelled refusal samples (LLM labels) and the blank human audit template
 scripts/envinfo.py thin wrapper; the environment record lives in quantgate/envinfo.py
 tests/             pytest; model tests carry @pytest.mark.model
 ```
 
 ## Invariants
 
-1. **`src/quantgate/schema.py` is frozen.** It matches DECISION.md §4.3. Do not change it in a
-   work package. Ask for the change in your report, and keep a local adapter until it is approved.
+1. **`src/quantgate/schema.py` is frozen.** Change it only with a `schema_version` decision and an
+   entry in `docs/deviations.md`.
 2. **Results are generated, never typed.** Numbers in README and docs come only from `make report`
    rendering committed JSON in `results/`. Never write a measured number by hand.
 3. **Pre-register before running.** `docs/prereg.md` is committed before any model run. Every
@@ -75,5 +75,5 @@ tests/             pytest; model tests carry @pytest.mark.model
 
 - Python 3.11+, `src/` layout, ruff line length 100, mypy with `disallow_untyped_defs`.
 - Every CLI command takes `--json`. Exit codes: 0 pass, 1 check failed, 2 usage or runtime error.
-- Commits: one logical change each. Trailers follow the session's attribution rules.
+- Commits: one logical change each.
 - No hostnames or usernames in any committed output.

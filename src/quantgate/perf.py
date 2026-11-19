@@ -395,7 +395,7 @@ def bandwidth_ceiling_check(
 
     Decode of a dense model reads roughly the whole file per token, so
     implied_gb_s = decode_tok_s * model_GB. A ratio above 1.0 means the decode number or the
-    bandwidth measurement is wrong (DECISION.md E4, research/03 section 6.3).
+    bandwidth measurement is wrong (docs/prereg.md §5).
     """
     if measured_gb_s <= 0.0:
         raise ValueError("measured bandwidth must be positive")

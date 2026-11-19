@@ -37,7 +37,7 @@ jobs:
       - name: Demo (scripted fake backend, SYNTHETIC)
         run: uv run quantgate demo --json > /dev/null
 
-  dogfood:
+  results-check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

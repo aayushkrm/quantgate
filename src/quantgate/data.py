@@ -1,7 +1,7 @@
 """Fixed evaluation subsets.
 
 Only item IDs and selection metadata are committed, in data/subsets/*.json. Item text is loaded
-at runtime through the Hugging Face ``datasets`` library (DECISION.md §2.2), so no dataset text
+at runtime through the Hugging Face ``datasets`` library (docs/prereg.md §1), so no dataset text
 is stored in the repo. Selection is seeded with SUBSET_SEED and reproducible:
 ``scripts/make_subsets.py`` writes the files once, and the ``load_*`` functions read the
 committed IDs back.

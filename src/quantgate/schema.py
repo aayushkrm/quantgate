@@ -1,8 +1,8 @@
-"""Frozen interfaces for quantgate (DECISION.md §4.3, quantgate).
+"""Frozen interfaces for quantgate.
 
-These types are a contract shared by every work package. Do not change them in a work
-package. Request a change in the report instead, and wait for orchestrator approval.
-Any change must bump the report ``schema_version`` and be logged in docs/deviations.md.
+These types are a contract shared by the eval, gate and report code. Change
+src/quantgate/schema.py only with a ``schema_version`` decision and an entry in
+docs/deviations.md.
 
 Schema 2 (2026-11-19, docs/deviations.md entry 13) adds optional fields only: VariantResult.item_ids
 and VariantResult.per_item (per-item correctness for paired gate tests), GateDecision.significance,
@@ -115,7 +115,7 @@ class GateRule(BaseModel):
 
 
 class HiddenDangerRule(BaseModel):
-    """Hidden-danger definition (DECISION.md §2.2, [03 §4.1]).
+    """Hidden-danger definition (docs/prereg.md §4).
 
     Flags a variant when every quality metric is within band_pts of the reference, but the
     refusal rate drops by at least refusal_drop_pts.

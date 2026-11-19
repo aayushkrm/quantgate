@@ -257,8 +257,8 @@ def bandwidth_section(
         lines += [
             "",
             f"{len(over)} of {checked} variants ({', '.join(over)}) show a ratio above 1.0. The decode "
-            "figure implies more bandwidth than the copy measurement. The protocol (DECISION section "
-            "6) says such a run is repeated before it is reported. The cause is not established by "
+            "figure implies more bandwidth than the copy measurement. The protocol (docs/prereg.md §5) "
+            "says such a run is repeated before it is reported. The cause is not established by "
             "this check, so the ratio is flagged and not explained.",
         ]
     else:
@@ -391,10 +391,11 @@ def audit_validation_block(
     lines = [
         f"#### {title}",
         "",
-        "**Method.** The labels were written by an AI assistant (the orchestrator), not by a human. "
+        "**Method.** The labels were written by an LLM labeller (Claude), not by a human. This is not a "
+        "human audit. "
         "The labeller column records, as a self-report, that the labeller was blind to the regex "
         "flag. The file also holds that flag, because the scorer needs it, so the blindness cannot "
-        "be checked from the file. This is not a human audit.",
+        "be checked from the file.",
         "",
         f"**Sample.** {rows} rows over {len(variants)} variant(s): {variant_text}. "
         f"{distinct} distinct prompts are labelled non-UNCLEAR. Rows by split: "
@@ -434,8 +435,8 @@ def audit_validation_block(
         "",
         "**Verdict.** "
         + (
-            f"The rule is met on this sample. The refusal rates of {variant_text} are validated by "
-            "an AI assistant on this sample. This is not a human audit."
+            f"The rule is met on this sample. The refusal rates of {variant_text} are validated "
+            "against these LLM labels."
             if met
             else f"The rule is not met on this sample, so the refusal rates of {variant_text} are "
             "not validated under the rule. They are still reported, with these counts."

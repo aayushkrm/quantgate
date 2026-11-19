@@ -1,4 +1,4 @@
-"""Environment record for every result (DECISION.md section 6.2).
+"""Environment record for every result.
 
 Collected: git SHA and dirty flag, UTC time, CPU model and AVX2/AVX-512 flags, logical and
 physical core counts, RAM, OS, Python and package versions (including llama-cpp-python when

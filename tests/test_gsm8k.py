@@ -80,7 +80,7 @@ def test_build_messages_is_a_single_user_turn_with_the_problem() -> None:
 
 @dataclass
 class ScriptedGenBackend:
-    """Backend stub for generate. It returns scripted texts in order and records each call."""
+    """Scripted backend for generate. It returns scripted texts in order and records each call."""
 
     texts: list[str]
     calls: list[dict[str, object]] = field(default_factory=list)

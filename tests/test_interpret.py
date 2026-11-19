@@ -71,8 +71,8 @@ def test_validation_block_states_the_method_and_the_stricter_reading(
     score = score_audit(path)
     rows = list(csv.DictReader(path.open(encoding="utf-8")))
     text = audit_validation_block(score, rows, title="Sample test")
-    assert "by an AI assistant" in text or "AI assistant" in text
-    assert "not by a human" in text
+    assert "written by an LLM labeller (Claude), not by a human." in text
+    assert text.count("This is not a human audit.") == 1
     assert "At least 50 non-UNCLEAR distinct prompts: not met (30)" in text
     assert "The rule is not met on this sample" in text
     assert "counts distinct prompts" in text
@@ -137,7 +137,7 @@ def test_single_variant_sample_with_distinct_prompts_meets_the_rule(tmp_path: Pa
     labels = list(csv.DictReader(path.open(encoding="utf-8")))
     text = audit_validation_block(score, labels, title="Sample test")
     assert "The rule is met on this sample" in text
-    assert "validated by an AI assistant" in text
+    assert "validated against these LLM labels" in text
     assert "This is not a human audit." in text
 
 

@@ -41,7 +41,7 @@ variants:
 #   refusal  n_harmful / n_benign: prompts per set; max_tokens: generation budget
 #   perf     prompt_tokens, gen_tokens, warmup and repeats per perf run; threads for llama.cpp
 #   seed     seed for subset selection and generation
-# These values are pre-registered defaults from DECISION.md §2.2. Change them only with a
+# These values are the pre-registered defaults (docs/prereg.md §2). Change them only with a
 # deviation entry in docs/deviations.md.
 suite:
   seed: 0

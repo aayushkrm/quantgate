@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Dogfood check for committed results: the gate must agree with the stored decisions.
+"""Check for committed results: the gate must agree with the stored decisions.
 
 - With a committed results/report.json, the report is loaded, the policy in configs/gate.yaml is
   applied afresh, and the stored decisions must match. The verdicts are printed.

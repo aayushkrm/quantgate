@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""STREAM-style copy and scale bandwidth, printed as JSON (DECISION.md E4, research/03 section 6.3).
+"""STREAM-style copy and scale bandwidth, printed as JSON (experiment E4, docs/prereg.md §5).
 
 Kernels follow McCalpin's STREAM definitions, with numpy arrays of float64:
   copy:  c[:] = a          bytes moved = 2 * N * 8   (read a, write c)

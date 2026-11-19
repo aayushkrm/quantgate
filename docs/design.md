@@ -1,14 +1,14 @@
 # Design
 
-This file records the decisions behind the code and the reasons for them. The plan is in
-`DECISION.md` §2.2. Experiments are pre-registered in `docs/prereg.md`.
+This file records the decisions behind the code and the reasons for them. Experiments are
+pre-registered in `docs/prereg.md`.
 
 ## Decisions
 
 - **One model family.** Qwen2.5-0.5B-Instruct, the official GGUF ladder from one publisher
   (Apache-2.0). Reference is fp16. The ladder is fixed in `configs/variants.yaml`.
-- **Inference with llama-cpp-python 0.3.37**, CPU only, `n_gpu_layers=0`, `n_threads=4`. An earlier
-  spot check by the orchestrator on this 4-core laptop found 4 threads faster than 8 for decode.
+- **Inference with llama-cpp-python 0.3.37**, CPU only, `n_gpu_layers=0`, `n_threads=4`. A
+  spot check on this 4-core laptop found 4 threads faster than 8 for decode.
   That check is not in `results/` and is not a measurement reported here.
 - **KL over the full vocabulary.** Per position, KL(P_ref || P_cand) in nats, pooled over all
   positions. Top-1 agreement and perplexity are companions. Each has a percentile bootstrap CI
@@ -24,7 +24,7 @@ This file records the decisions behind the code and the reasons for them. The pl
 - **Refusal classifier is a published regex list.** The patterns are in
   `src/quantgate/evals/refusal.py`. Completions are written only to a gitignored `raw/`
   directory, and only flags, hashes and the matched pattern are committed. The classifier has
-  not been validated by a human. Hand validation uses `quantgate audit export` and `audit score`,
+  not been validated by a human. Validation uses `quantgate audit export` and `audit score`,
   described in `docs/limitations.md`. Known false positives and negatives are listed in the module
   docstring.
 - **Wilson 95% intervals** for every rate (`quantgate.evals.wilson_ci`, shared by all evals).
@@ -38,7 +38,7 @@ This file records the decisions behind the code and the reasons for them. The pl
 - **Lock file for hashes.** `quantgate fetch` writes `configs/variants.lock.json` with the
   observed sha256 and size. The registry YAML keeps its null pins and its comments. `eval`
   verifies against the lock and records any check it could not run in `env.json`.
-- **Results are generated.** The README results block and the Pages site are rendered from
+- **Results are generated.** The README results block and the static site (`make site`) are rendered from
   `results/report.json`. `scripts/render_readme.py --check` fails CI when the README is stale.
 - **Packaging.** The default policy, the registry and the subsets are bundled into the wheel
   (`quantgate/_data/`), so the installed `quantgate demo` runs from any directory. In a checkout
@@ -55,7 +55,7 @@ This file records the decisions behind the code and the reasons for them. The pl
 
 ## Where things live
 
-- `src/quantgate/schema.py`: frozen interfaces. Changes need approval and a `schema_version` bump.
+- `src/quantgate/schema.py`: frozen interfaces. Change it only with a `schema_version` decision and an entry in `docs/deviations.md`.
 - `src/quantgate/cli.py`: the typer app. Every command takes `--json`.
 - `results/`: committed JSON only. Raw completions are gitignored.
 - `results/headline.json`: the hub's standard headline (`schemas/headline.schema.json`). It is

@@ -48,7 +48,7 @@ def _verdicts_for(decision: GateDecision, labels: list[str]) -> list[str]:
 
 
 def gate_label(decision: GateDecision) -> str:
-    """Verdict text that says why a variant passed or failed (review Q2, Q5).
+    """Verdict text that says why a variant passed or failed.
 
     PASS means every blocking rule passes and the variant is not a hidden-danger row. A hidden-
     danger row fails even when every rule passes. A failing rule whose interval includes its
@@ -218,7 +218,7 @@ def _verdict(
     point_passes: bool,
     missing: bool,
 ) -> dict[str, Any]:
-    """How one rule's result should be read: basis, interval, and a verdict (review Q2).
+    """How one rule's result should be read: basis, interval, and a verdict.
 
     A rule that passes on its point estimate is "pass". A rule that is missing fails closed as
     "missing". A violated rule is "significant" when its interval lies wholly on the failing side

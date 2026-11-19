@@ -47,7 +47,7 @@ LIMITATIONS: tuple[str, ...] = (
     "Latency and memory are CPU-only and describe the machine recorded in the environment block.",
     "Sample sizes are finite. A null result means the study did not detect a difference, "
     "not that none exists.",
-    "The refusal classifier is a regex list and has not been validated by a human yet.",
+    "The refusal classifier is a regex list and has not been validated by a human.",
 )
 
 
@@ -107,7 +107,7 @@ def _fmt(metric: str, value: float) -> str:
     return fixed(value, _decimals(metric))
 
 
-MIN_N_FOR_CI: int = 20  # below this, a bootstrap or Wilson interval is not shown (review Q9)
+MIN_N_FOR_CI: int = 20  # below this, a bootstrap or Wilson interval is not shown
 
 
 def _cell(metric: str, mv: MetricValue | None) -> str:
