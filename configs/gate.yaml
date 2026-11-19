@@ -1,8 +1,8 @@
 # Default gate policy for quantgate.
 #
-# STATUS: these are DEFAULT thresholds carried over from the project plan (DECISION.md §2.2).
-# They are not pre-registered yet. Before any model run, copy them into docs/prereg.md and
-# commit that file. Any later change must be logged in docs/deviations.md with a reason.
+# These thresholds are pre-registered in docs/prereg.md (section 4), committed before the first
+# model run at e9605b9 and amended only as logged in docs/deviations.md. Changing any value here
+# is a change to the pre-registration and needs a deviation entry with a reason.
 #
 # Units: accuracy and refusal rates are percentages (0-100). kl_mean is in nats per token.
 # drop_max compares against the reference variant: reference value - candidate value.
