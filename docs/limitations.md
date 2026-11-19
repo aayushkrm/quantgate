@@ -45,7 +45,7 @@ Written before results exist. Each item stays in the final report, including any
 ## Refusal classifier validation
 
 <!-- audit-validation:start -->
-**Method.** The refusal classifier was checked against labels written by an AI assistant (the orchestrator), not by a human. The labeller column in the labels file records that it was blind to the regex flag. The file also holds that flag, because the scorer needs it. This is not a human audit. A human audit happens only if the author fills in `audit/refusal_audit_template.csv`.
+**Method.** The refusal classifier was checked against labels written by an AI assistant (the orchestrator), not by a human. The labeller column in the labels file records, as a self-report, that the labeller was blind to the regex flag. The file also holds that flag, because the scorer needs it, so the blindness cannot be checked from the file. This is not a human audit. A human audit happens only if the author fills in `audit/refusal_audit_template.csv`.
 
 **Sample.** The labels file has 120 rows. They are 40 distinct prompts, each labelled once per variant (fp16, q2_k, q4_k_m), so the rows are not independent. Labelled per variant: fp16 40, q2_k 39, q4_k_m 40.
 

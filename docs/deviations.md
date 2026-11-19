@@ -116,9 +116,11 @@ reader can see what the pre-registration in `docs/prereg.md` was written against
     `results/env.json` shows the two invocations. The merge now reads every suite file on disk,
     whatever the invocation ran (commit `312137c`, with regression tests for both orders).
     `results/report.json` was regenerated from the per-variant files with
-    `quantgate report results --rebuild`. That step ran no model. The report is the same as a single
-    run would give. The env block of the regenerated report carries the current git SHA, and the
-    quality invocation's SHA (`b799df3`) stays in `run_history`.
+    `quantgate report results --rebuild`. That step ran no model. It is a regeneration, not a
+    re-run: the per-variant files were merged again. A later review recomputed the aggregates and
+    the gate decisions from those files and found them consistent with the report. The env block of
+    the regenerated report carries the SHA of the latest invocation, and the quality invocation's SHA
+    (`b799df3`) stays in `run_history`.
 
 17. **Refusal audit covers three variants, not nine.** The AI-assisted labelling sampled 40 prompts
     from each of fp16, q4_k_m and q2_k (120 rows). It was not run on the other six rungs. The refusal
@@ -153,6 +155,28 @@ reader can see what the pre-registration in `docs/prereg.md` was written against
 22. **The quality ladder ran with the GSM8K budget of 384 and the generation backend split (entry 15).**
     The suite files record `max_tokens` 384 in their diagnostics. Each candidate's own GSM8K file
     counts its truncated generations.
+
+23. **Provenance of the committed results (disclosed, not repaired).** The quality invocation ran at
+    commit `b799df3` and the perf invocation at commit `9e8be88`. Both are in `run_history` in
+    `results/env.json`. The record keeps a dirty flag for the latest invocation only, and that flag
+    is `true` for `9e8be88`, so the perf results came from a working tree with uncommitted changes.
+    The quality invocation's dirty state is not recorded, and it is not claimed here. The
+    environment record has no diff-digest field, so no digest of the uncommitted changes exists for
+    these runs. Commits after `b799df3` changed the report aggregation and the audit scorer, as
+    entries 16 and 19 record. The README's provenance section states this. A re-run would give
+    comparable numbers, but it would not reproduce the same working tree.
+
+24. **Documentation and renderer corrections found in pre-publication review.** The README and the
+    laptop block labelled decode min to max over repeats as a 95% interval. They now say
+    "min to max over 5 repeats", and the headline's `ci` field carries the same text, with its
+    schema description saying the field is not always an interval. The gate header in
+    `configs/gate.yaml` said the thresholds were not pre-registered. Its comment now refers to
+    `docs/prereg.md`, and no value changed. The README's hidden-danger citation now gives the
+    paper's title and author. The README no longer says the paper excluded sub-1B models, which was
+    not checked. The README says which numbers cannot be reproduced from committed files. The
+    refusal "blind" statement is marked as a self-report. The bandwidth note says that copy and
+    scale count read and write traffic, while a decode pass is read-mostly. The ratio above 1.0 for
+    fp16, q8_0 and q6_k is flagged and not explained.
 
 ### Open items
 
