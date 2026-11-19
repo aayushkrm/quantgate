@@ -51,6 +51,7 @@ from typing import IO, Any, Literal, NamedTuple
 
 import numpy as np
 
+from quantgate.cache import raw_root
 from quantgate.evals import wilson_ci
 from quantgate.schema import Backend, MetricValue
 
@@ -199,7 +200,7 @@ def default_raw_path(variant: str) -> Path:
     """Local-only raw completion file for one variant: ~/.cache/quantgate/raw/<variant>/."""
     if not variant or "/" in variant or variant in (".", ".."):
         raise ValueError(f"invalid variant name for a raw path: {variant!r}")
-    return Path.home() / ".cache" / "quantgate" / "raw" / variant / RAW_FILENAME
+    return raw_root() / variant / RAW_FILENAME
 
 
 @contextlib.contextmanager

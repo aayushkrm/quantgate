@@ -11,6 +11,7 @@ import math
 import shutil
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any, TypeVar
 
@@ -19,12 +20,14 @@ import yaml
 
 from quantgate import __version__ as quantgate_version
 from quantgate.backend import FakeBackend, LlamaCppBackend
+from quantgate.cache import raw_root as raw_root_path
 from quantgate.data import load_arc_easy, load_gsm8k, load_wikitext_passages, select_subset
 from quantgate.envinfo import collect as collect_envinfo
 from quantgate.evals.gsm8k import run_gsm8k, score_gsm8k
 from quantgate.evals.kl import run_kl
 from quantgate.evals.mcq import McqItem, run_mcq, score_mcq
 from quantgate.evals.refusal import (
+    RAW_FILENAME,
     PromptSet,
     default_raw_path,
     load_benign_prompts,
@@ -158,6 +161,48 @@ def _collect_env() -> dict[str, Any]:
     if not isinstance(data, dict):
         raise CliError("environment record is not a JSON object")
     return data
+
+
+RAW_META_FILENAME = "refusal.meta.json"
+
+
+def _check_raw_overwrite(raw_dir: Path, fingerprint: str, force: bool) -> None:
+    """Refuse to replace a non-empty raw completions file made under a different configuration.
+
+    The raw file is local and cannot be regenerated without a model run, so a rerun must not
+    silently replace it (incident: docs/deviations.md, entry 25). A file with no record of its
+    fingerprint is treated as a different configuration. --force replaces it.
+    """
+    raw = raw_dir / RAW_FILENAME
+    if not raw.is_file() or raw.stat().st_size == 0:
+        return
+    meta = raw_dir / RAW_META_FILENAME
+    if meta.is_file():
+        stored = json.loads(meta.read_text(encoding="utf-8")).get("fingerprint")
+        if stored == fingerprint:
+            return
+        reason = "a different configuration"
+    else:
+        reason = "no record of the configuration that wrote it"
+    if force:
+        return
+    raise CliError(
+        f"{_portable(raw)} is a non-empty raw file from {reason}. Rerunning the refusal suite "
+        "would replace it. Pass --force to replace it, or set QUANTGATE_CACHE_DIR to another "
+        "directory."
+    )
+
+
+def _write_raw_meta(raw_dir: Path, fingerprint: str, variant: str) -> None:
+    """Record which configuration is about to write the raw file. Written before the run starts,
+    so a crash mid-run leaves a record that matches the file being written."""
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    meta = {
+        "variant": variant,
+        "fingerprint": fingerprint,
+        "utc_time": datetime.now(UTC).isoformat(timespec="seconds"),
+    }
+    (raw_dir / RAW_META_FILENAME).write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
 
 
 def _raw_dir(variant: str) -> Path:
@@ -550,6 +595,7 @@ def _quality_phase(
     ran: list[str],
     skipped: list[str],
     n_scale: float = 1.0,
+    force: bool = False,
 ) -> None:
     """Run the quality suites variant by variant, reference first, skipping finished files.
 
@@ -604,6 +650,9 @@ def _quality_phase(
                 gen_backend = _load_backend(paths[v.name], cfg, generation=True)
                 try:
                     for s in gen_todo:
+                        if s == "refusal":
+                            _check_raw_overwrite(_raw_dir(v.name), fp(v, s), force)
+                            _write_raw_meta(_raw_dir(v.name), fp(v, s), v.name)
                         metrics, extra = _run_suite(
                             s, gen_backend, None, cfg, cache, _raw_dir(v.name)
                         )
@@ -805,6 +854,13 @@ def eval_cmd(
         typer.Option("--n-scale", help="Multiply every sample count by this (0 < x <= 1)."),
     ] = 1.0,
     policy: Annotated[Path | None, typer.Option("--policy", "-p", help="Gate policy YAML.")] = None,
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force",
+            help="Replace an existing raw completions file made under a different configuration.",
+        ),
+    ] = False,
     json_out: JsonOption = False,
 ) -> None:
     """Run the eval suite for every variant and write per-variant JSON under --out.
@@ -859,7 +915,7 @@ def eval_cmd(
 
         ran: list[str] = []
         skipped: list[str] = []
-        _quality_phase(variants, registry, paths, suites, cfg, out, ran, skipped, n_scale)
+        _quality_phase(variants, registry, paths, suites, cfg, out, ran, skipped, n_scale, force)
         if "perf" in suites:
             _perf_phase(variants, paths, cfg, out, ran, skipped, n_scale)
 
@@ -984,7 +1040,7 @@ def audit_export(
     Each row gives the prompt id, the regex flag, the SHA-256 of the completion, and the local
     path and line of the raw record. The CSV contains local paths, so it must not be committed.
     """
-    from quantgate.audit import DEFAULT_AUDIT_OUT, DEFAULT_RAW_ROOT, export_audit
+    from quantgate.audit import default_audit_out, export_audit
 
     with _guard(json_out):
         if n <= 0:
@@ -996,11 +1052,11 @@ def audit_export(
         if unknown:
             raise CliError(f"unknown variant(s): {', '.join(unknown)}")
         summary = export_audit(
-            (DEFAULT_RAW_ROOT if raw_root is None else raw_root).expanduser(),
+            (raw_root_path() if raw_root is None else raw_root).expanduser(),
             names,
             n,
             seed,
-            (DEFAULT_AUDIT_OUT if out is None else out).expanduser(),
+            (default_audit_out() if out is None else out).expanduser(),
         )
         lines = [f"Wrote {summary['rows']} row(s) to {summary['out']}."]
         for variant, count in summary["exported"].items():

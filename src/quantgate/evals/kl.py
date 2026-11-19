@@ -33,9 +33,9 @@ from pathlib import Path
 
 import numpy as np
 
+from quantgate.cache import ref_root
 from quantgate.schema import Backend, MetricValue
 
-DEFAULT_CACHE_ROOT: Path = Path.home() / ".cache" / "quantgate" / "ref"
 DEFAULT_N_BOOT: int = 1000
 
 _CHUNK_ROWS = 64
@@ -110,7 +110,7 @@ class RefCache:
     def __init__(self, variant: str, root: Path | None = None) -> None:
         """Cache for one reference variant. Files go under root (default ~/.cache/quantgate/ref)."""
         self.variant = variant
-        base = DEFAULT_CACHE_ROOT if root is None else Path(root)
+        base = ref_root() if root is None else Path(root)
         self.dir: Path = base / variant
 
     def _paths(self, idx: int) -> tuple[Path, Path]:

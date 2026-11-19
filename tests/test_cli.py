@@ -543,11 +543,12 @@ def test_quality_backend_is_512_tokens_with_one_batch() -> None:
 
 
 def test_raw_completions_go_to_the_user_cache_not_the_repo() -> None:
-    """Q8: raw refusal completions sit under ~/.cache/quantgate/raw, outside the repository."""
+    """Q8: raw refusal completions sit under the quantgate cache (raw/), outside the repository."""
     from quantgate import cli as cli_module
+    from quantgate.cache import raw_root
 
     raw = cli_module._raw_dir("q4_k_m")
-    assert raw == Path.home() / ".cache" / "quantgate" / "raw" / "q4_k_m"
+    assert raw == raw_root() / "q4_k_m"
     assert "raw" in raw.parts
     assert not str(raw.resolve()).startswith(str(REPO.resolve()))
 
@@ -845,3 +846,30 @@ def test_report_rebuild_regenerates_report_from_disk(
 
 def tmp_path_for(fake: dict[str, Path]) -> Path:
     return fake["out"].parent
+
+
+def test_raw_overwrite_guard_refuses_unrecorded_and_mismatched_files(tmp_path: Path) -> None:
+    from quantgate import cli as cli_module
+
+    raw_dir = tmp_path / "raw" / "q4_k_m"
+    cli_module._check_raw_overwrite(raw_dir, "fpA", force=False)  # no file: nothing to protect
+    raw_dir.mkdir(parents=True)
+    (raw_dir / "refusal.jsonl").write_text('{"prompt_id": "x"}\n', encoding="utf-8")
+    with pytest.raises(cli_module.CliError, match="no record of the configuration"):
+        cli_module._check_raw_overwrite(raw_dir, "fpA", force=False)
+    cli_module._check_raw_overwrite(raw_dir, "fpA", force=True)  # --force replaces it
+
+    cli_module._write_raw_meta(raw_dir, "fpA", "q4_k_m")
+    cli_module._check_raw_overwrite(raw_dir, "fpA", force=False)  # same configuration: allowed
+    with pytest.raises(cli_module.CliError, match="different configuration"):
+        cli_module._check_raw_overwrite(raw_dir, "fpB", force=False)
+    cli_module._check_raw_overwrite(raw_dir, "fpB", force=True)
+
+
+def test_empty_raw_file_is_not_protected(tmp_path: Path) -> None:
+    from quantgate import cli as cli_module
+
+    raw_dir = tmp_path / "raw" / "q4_k_m"
+    raw_dir.mkdir(parents=True)
+    (raw_dir / "refusal.jsonl").write_text("", encoding="utf-8")
+    cli_module._check_raw_overwrite(raw_dir, "fpA", force=False)

@@ -17,6 +17,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+from quantgate.cache import audit_dir
 from quantgate.evals.refusal import RAW_FILENAME
 
 EXPORT_COLUMNS: tuple[str, ...] = (
@@ -30,10 +31,11 @@ EXPORT_COLUMNS: tuple[str, ...] = (
     "human_label",
     "notes",
 )
-DEFAULT_RAW_ROOT: Path = Path.home() / ".cache" / "quantgate" / "raw"
-DEFAULT_AUDIT_OUT: Path = (
-    Path.home() / ".cache" / "quantgate" / "audit" / "refusal_audit_sample.csv"
-)
+
+
+def default_audit_out() -> Path:
+    """Where `audit export` writes by default: <cache>/audit/refusal_audit_sample.csv."""
+    return audit_dir() / "refusal_audit_sample.csv"
 
 
 def raw_file(raw_root: Path, variant: str) -> Path:
