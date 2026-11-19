@@ -60,7 +60,10 @@ tests/             pytest; model tests carry @pytest.mark.model
    change to n, prompt, threshold or model goes in `docs/deviations.md` with a reason.
 4. **Raw generations stay local.** Refusal completions and per-token dumps go to gitignored
    directories. Only flags, hashes and matched patterns are committed.
-5. **No model weights in the repo.** Weights live in `~/models`. Cache lives in `~/.cache/quantgate`.
+5. **No model weights in the repo.** Weights live in `~/models`. The cache lives in
+   `~/.cache/quantgate`, or in `$QUANTGATE_CACHE_DIR` when that is set. Tests run with both `HOME`
+   and the cache redirected to a temporary directory (`tests/conftest.py`). Do not write a test
+   that uses the real cache, and do not remove that fixture (`docs/deviations.md`, entry 25).
 6. **Tests do not need the network or models.** Mark anything that needs a GGUF file with
    `@pytest.mark.model`. CI runs `-m "not model"`.
 7. **Scope labels.** Latency and memory numbers are CPU-only and describe the measured machine.

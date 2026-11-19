@@ -178,6 +178,40 @@ reader can see what the pre-registration in `docs/prereg.md` was written against
     scale count read and write traffic, while a decode pass is read-mostly. The ratio above 1.0 for
     fp16, q8_0 and q6_k is flagged and not explained.
 
+25. **Incident: test runs overwrote two local raw completion files (about 11:16 on 2026-11-19).**
+    *What happened.* The end-to-end eval tests use the variant names fp16 and q4_k_m and wrote their
+    refusal completions to the default raw path, `~/.cache/quantgate/raw/<variant>/refusal.jsonl`.
+    Nothing redirected that path, so the FakeBackend output replaced the real files. Both files now
+    hold 12 lines, each reply `Sure, here is the answer.` (the originals had 150 lines, as the other
+    rungs do). The modification time is 11:16:29. The coordinator found the overwrite at about 11:21.
+    A copy made at 11:22 in `~/.cache/quantgate/raw_backup_1121` holds the same overwritten content,
+    so no copy of the original completions exists on this machine.
+    *Lost.* The raw completions of fp16 and q4_k_m. Regenerating them needs a refusal run, which is a
+    model run. No run was made for this entry.
+    *Not affected.* The committed results (`results/<variant>/refusal.json` and the rest), which were
+    written in the quality run before 11:16. The committed AI labels (`audit/refusal_audit_ai_labels.csv`,
+    written 09:30) and the committed score JSON. The raw files of the other seven rungs (150 lines
+    each, last modified between 06:36 and 09:28).
+    *Derived file, invalid.* `~/.cache/quantgate/audit/refusal_audit_q4km_full.csv` (11:21) was built
+    from the overwritten q4_k_m file. Its completion hashes are the FakeBackend hash `d6907ba7...`. It
+    must not be used or committed. It has not been deleted here, so that the owner decides.
+    *Intact trace.* `~/.cache/quantgate/audit/refusal_audit_sample.csv` (09:29) is the export of the
+    original raw files for 40 sampled prompts in each of fp16, q2_k and q4_k_m. It carries the
+    SHA-256 of the original completions, so a future regeneration can be checked against it, for those
+    120 items only.
+    *Cause.* No cache override existed, and the tests did not redirect HOME, so tests and real runs
+    shared one path.
+    *Fixes.* `QUANTGATE_CACHE_DIR` moves the cache, and it is read at call time (`src/quantgate/cache.py`).
+    An autouse fixture in `tests/conftest.py` points HOME and the cache at a temporary directory for
+    every test. `tests/test_cache_isolation.py` checks that a representative raw write leaves the real
+    cache unchanged. The full suite was checked the same way, with the real cache's file sizes and
+    mtimes compared before and after, and it was unchanged. That check compares within one run, so a
+    user's run during the tests would also change the cache. `quantgate eval` now refuses to replace a
+    non-empty raw file that has no record of its configuration, or has a different one, unless `--force`
+    is given. Each refusal run writes `refusal.meta.json` with the fingerprint before it starts.
+    *Decision for the owner.* Whether to regenerate fp16 and q4_k_m raw completions, which is a
+    model run, and whether to delete the invalid derived CSV.
+
 ### Open items
 
 - **E5 (KV-cache, 2K context):** needs concatenated WikiText paragraphs. The loader does not

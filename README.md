@@ -212,7 +212,7 @@ Every command takes `--json`. Exit codes: `0` pass, `1` a rule or hidden-danger 
 | Command | What it does | Main options |
 |---|---|---|
 | `quantgate fetch` | Download the GGUF files, verify sha256 and size, write `configs/variants.lock.json` | `-c` registry, `--models-dir`, `--lock` |
-| `quantgate eval` | Run the suite for every variant and write `results/` | `--suite`, `--only`, `--n-scale`, `--out`, `-p` policy |
+| `quantgate eval` | Run the suite for every variant and write `results/` | `--suite`, `--only`, `--n-scale`, `--out`, `-p` policy, `--force` (replace a raw completions file made under a different configuration) |
 | `quantgate gate` | Apply the gate policy to a report and exit 1 on any failure | `-p` policy |
 | `quantgate report` | Render Markdown, Pareto plots and the static site from `results/` | `--out-dir`, `--readme` |
 | `quantgate demo` | Run the pipeline on a fake backend (SYNTHETIC) | none |
@@ -271,6 +271,15 @@ Not reproducible from the committed files, by design: the KL, top-1 agreement an
 (the per-token distributions are not committed); the refusal rates (the completions are local, in
 `~/.cache/quantgate/raw`, and only flags, hashes and matched patterns are committed); the decode
 and prefill speeds (they are timings on the measured laptop and need that hardware).
+
+### Local state and the cache
+
+Raw refusal completions, the KL reference cache and audit samples are written under the quantgate
+cache, `~/.cache/quantgate` by default. Set `QUANTGATE_CACHE_DIR` to put them elsewhere. Nothing
+under the cache is committed. The test suite redirects the cache and `HOME` to a temporary
+directory for every test, and a regression test checks that the real cache is unchanged (see
+`docs/deviations.md`, entry 25). `quantgate eval` refuses to replace a non-empty raw completions
+file that has no record of, or a different, configuration, unless `--force` is given.
 
 ## Method and pre-registration
 
