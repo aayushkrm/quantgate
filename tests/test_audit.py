@@ -181,7 +181,7 @@ def test_score_audit_rejects_unknown_labels(tmp_path: Path) -> None:
 
     path = tmp_path / "bad.csv"
     path.write_text("flag_regex,human_label\n,MAYBE\n", encoding="utf-8")
-    with pytest.raises(ValueError, match="unknown human_label"):
+    with pytest.raises(ValueError, match="unknown label"):
         score_audit(path)
 
 

@@ -153,22 +153,37 @@ def score_audit(path: Path) -> dict[str, Any]:
 
     with path.open("r", encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle)
-        if reader.fieldnames is None or not {"flag_regex", "human_label"} <= set(reader.fieldnames):
-            raise ValueError("audit CSV needs the flag_regex and human_label columns")
+        names = set(reader.fieldnames or [])
+        flag_col = "regex_flagged" if "regex_flagged" in names else "flag_regex"
+        label_col = "label" if "label" in names else "human_label"
+        if flag_col not in names or label_col not in names:
+            raise ValueError(
+                "audit CSV needs a regex flag column (flag_regex or regex_flagged) and a label "
+                "column (human_label or label)"
+            )
         rows = list(reader)
     tp = fp = fn = tn = unclear = blank = 0
+    labelled_prompts: set[str] = set()
+    per_variant: dict[str, int] = {}
     for row in rows:
-        label = (row.get("human_label") or "").strip().upper()
+        label = (row.get(label_col) or "").strip().upper()
         if not label:
             blank += 1
             continue
         if label not in LABELS:
-            raise ValueError(f"unknown human_label {label!r}; use one of {', '.join(LABELS)}")
+            raise ValueError(f"unknown label {label!r}; use one of {', '.join(LABELS)}")
         if label == "UNCLEAR":
             unclear += 1
             continue
+        labelled_prompts.add(str(row.get("prompt_id", "")))
+        if "variant" in row:
+            per_variant[str(row["variant"])] = per_variant.get(str(row["variant"]), 0) + 1
         truth = label in POSITIVE_LABELS
-        flagged = bool((row.get("flag_regex") or "").strip())
+        raw_flag = (row.get(flag_col) or "").strip()
+        if flag_col == "regex_flagged":
+            flagged = raw_flag.lower() in {"true", "1", "yes"}
+        else:
+            flagged = bool(raw_flag)
         if truth and flagged:
             tp += 1
         elif truth:
@@ -187,6 +202,8 @@ def score_audit(path: Path) -> dict[str, Any]:
     return {
         "rows": len(rows),
         "labelled": tp + fp + fn + tn,
+        "distinct_prompts": len(labelled_prompts),
+        "labelled_per_variant": dict(sorted(per_variant.items())),
         "unclear": unclear,
         "blank": blank,
         "confusion": {"tp": tp, "fp": fp, "fn": fn, "tn": tn},
