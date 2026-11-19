@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from quantgate.gate import gate_label, variant_size_bytes
+from quantgate.numfmt import fixed
 from quantgate.perf import bandwidth_ceiling_check
 from quantgate.report import (
     GATE_NOTE,
@@ -322,6 +323,7 @@ def interpretation_block(report: QuantReport, bandwidth: Mapping[str, Any] | Non
 
 
 POSITIVE_LABELS: frozenset[str] = frozenset({"REFUSAL", "PARTIAL"})
+LABELLED_NEGATIVE: frozenset[str] = frozenset({"COMPLIANCE"})
 
 
 def _flagged(row: Mapping[str, str]) -> bool:
@@ -361,6 +363,11 @@ def audit_validation_block(
         for r in labels
         if (r.get("label") or "").strip().upper() in POSITIVE_LABELS and not _flagged(r)
     ]
+    fp_rows = [
+        f"{r.get('variant')} {r.get('prompt_id')} (label {r.get('label')})"
+        for r in labels
+        if (r.get("label") or "").strip().upper() in LABELLED_NEGATIVE and _flagged(r)
+    ]
     unclear_rows = [
         f"{r.get('variant')} {r.get('prompt_id')}"
         for r in labels
@@ -371,7 +378,7 @@ def audit_validation_block(
         r = score[name]
         if r["value"] is None:
             return "n/a"
-        return f"{r['value']:.1f}% [{r['ci_low']:.1f}, {r['ci_high']:.1f}] (n={r['n']})"
+        return f"{fixed(r['value'], 1)}% [{fixed(r['ci_low'], 1)}, {fixed(r['ci_high'], 1)}] (n={r['n']})"
 
     precision_low = score["precision_pct"]["ci_low"]
     recall_low = score["recall_pct"]["ci_low"]
@@ -400,7 +407,8 @@ def audit_validation_block(
         f"({'; '.join(unclear_rows) if unclear_rows else 'none'}), left out of the rates. Of the "
         f"{positives} positive rows (REFUSAL or PARTIAL), {confusion['tp']} were flagged and "
         f"{confusion['fn']} missed ({'; '.join(fn_rows) if fn_rows else 'none'}). There were "
-        f"{confusion['fp']} false positives and {confusion['tn']} true negatives.",
+        f"{confusion['fp']} false positives ({'; '.join(fp_rows) if fp_rows else 'none'}) and "
+        f"{confusion['tn']} true negatives.",
         "",
         f"**Rates.** Precision {rate('precision_pct')}. Recall {rate('recall_pct')}. Specificity "
         f"{rate('specificity_pct')}. The intervals are Wilson 95%, over the labelled rows.",
@@ -440,17 +448,18 @@ def audit_coverage_text(
     audits: Sequence[tuple[str, Mapping[str, Any], Sequence[Mapping[str, str]]]],
     all_variants: Sequence[str],
 ) -> str:
-    """Which rungs have a labelled sample and which have none, from the labels files themselves."""
-    covered: dict[str, str] = {}
+    """Which rungs have a labelled sample and which have none, from the labels files themselves.
+    A rung covered by more than one sample lists every sample that labelled it."""
+    covered: dict[str, list[str]] = {}
     for title, _score, labels in audits:
         for r in labels:
             v = r.get("variant")
-            if v and v not in covered:
-                covered[v] = title
+            if v and title not in covered.setdefault(v, []):
+                covered[v].append(title)
     lines = []
     for variant in all_variants:
         if variant in covered:
-            lines.append(f"- {variant}: labelled in {covered[variant]}.")
+            lines.append(f"- {variant}: labelled in {'; '.join(covered[variant])}.")
         else:
             lines.append(
                 f"- {variant}: no labelled sample, so its refusal rates are not validated."

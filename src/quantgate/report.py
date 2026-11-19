@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from quantgate.gate import HIDDEN_MISSING_PREFIX, gate_label
+from quantgate.numfmt import fixed
 from quantgate.schema import GateDecision, MetricValue, QuantReport, VariantResult
 
 QUALITY_METRICS: tuple[str, ...] = (
@@ -102,8 +103,8 @@ def _decimals(metric: str) -> int:
 
 
 def _fmt(metric: str, value: float) -> str:
-    """Format one number for display."""
-    return f"{value:.{_decimals(metric)}f}"
+    """Format one number for display, rounding ties the same way on every Python version."""
+    return fixed(value, _decimals(metric))
 
 
 MIN_N_FOR_CI: int = 20  # below this, a bootstrap or Wilson interval is not shown (review Q9)
@@ -207,7 +208,7 @@ def _judgement_cell(d: GateDecision) -> str:
 
 def _fmt_interval(interval: list[float]) -> str:
     """Two numbers of a 95% interval, to two decimals, for the judgement column."""
-    return f"{interval[0]:.2f}, {interval[1]:.2f}"
+    return f"{fixed(interval[0], 2)}, {fixed(interval[1], 2)}"
 
 
 def _hidden_cell(d: GateDecision) -> str:

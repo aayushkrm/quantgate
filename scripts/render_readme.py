@@ -40,6 +40,13 @@ AUDIT_START = "<!-- audit:start -->"
 AUDIT_END = "<!-- audit:end -->"
 LIMIT_AUDIT_START = "<!-- audit-validation:start -->"
 LIMIT_AUDIT_END = "<!-- audit-validation:end -->"
+SENS_START = "<!-- sensitivity:start -->"
+SENS_END = "<!-- sensitivity:end -->"
+# Post-hoc sensitivity: the labelled 150-prompt samples that match each audited rung.
+SENS_LABELS: dict[str, Path] = {
+    "q5_k_m": REPO / "audit" / "refusal_audit_ai_labels_q5_k_m_150_prompts.csv",
+    "q2_k": REPO / "audit" / "refusal_audit_ai_labels_q2_k_150_prompts.csv",
+}
 LIMITATIONS = REPO / "docs" / "limitations.md"
 # Every labelled sample that is committed. Each has a labels file and the score JSON that
 # `quantgate audit score --json` wrote for it. The titles say what the sample is, not its numbers.
@@ -53,6 +60,11 @@ AUDIT_SAMPLES: tuple[tuple[str, Path, Path], ...] = (
         "Sample B: all 150 prompts, one variant",
         REPO / "results" / "audit" / "refusal_audit_score_q5_k_m_150_prompts.json",
         REPO / "audit" / "refusal_audit_ai_labels_q5_k_m_150_prompts.csv",
+    ),
+    (
+        "Sample C: all 150 prompts, one variant",
+        REPO / "results" / "audit" / "refusal_audit_score_q2_k_150_prompts.json",
+        REPO / "audit" / "refusal_audit_ai_labels_q2_k_150_prompts.csv",
     ),
 )
 
@@ -94,6 +106,7 @@ from quantgate.report import (  # noqa: E402
 )
 from quantgate.resources import config_path  # noqa: E402
 from quantgate.schema import QuantReport  # noqa: E402
+from quantgate.sensitivity import sensitivity_block, sensitivity_rows  # noqa: E402
 
 NO_RESULTS_RESULTS = (
     "_No committed results yet. This block is rendered from `results/report.json` by "
@@ -260,7 +273,16 @@ def render_limitations(
     text: str, audits: list[tuple[str, dict, list[dict[str, str]]]] | None
 ) -> str:
     """docs/limitations.md with the validation blocks replaced from the score JSON and labels."""
-    return _replace_between(text, LIMIT_AUDIT_START, LIMIT_AUDIT_END, render_audit_body(audits))
+    text = _replace_between(text, LIMIT_AUDIT_START, LIMIT_AUDIT_END, render_audit_body(audits))
+    return _replace_between(text, SENS_START, SENS_END, render_sensitivity_body())
+
+
+def render_sensitivity_body() -> str:
+    """The post-hoc sensitivity table, computed from committed results and labels files."""
+    rows = sensitivity_rows(REPO / "results", SENS_LABELS)
+    if not rows:
+        return "_No committed refusal results yet, so there is no sensitivity table._\n"
+    return sensitivity_block(rows)
 
 
 def render_power(text: str) -> str:
@@ -292,7 +314,8 @@ def render_readme(
     text = _replace_between(
         text, INTERP_START, INTERP_END, render_interpretation_body(report, bandwidth)
     )
-    return _replace_between(text, AUDIT_START, AUDIT_END, render_audit_body(audit))
+    text = _replace_between(text, AUDIT_START, AUDIT_END, render_audit_body(audit))
+    return _replace_between(text, SENS_START, SENS_END, render_sensitivity_body())
 
 
 def banned_word_hits(paths: list[Path]) -> list[str]:
