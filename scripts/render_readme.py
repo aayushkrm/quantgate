@@ -41,8 +41,20 @@ AUDIT_END = "<!-- audit:end -->"
 LIMIT_AUDIT_START = "<!-- audit-validation:start -->"
 LIMIT_AUDIT_END = "<!-- audit-validation:end -->"
 LIMITATIONS = REPO / "docs" / "limitations.md"
-AUDIT_SCORE = REPO / "results" / "audit" / "refusal_audit_score.json"
-AUDIT_LABELS = REPO / "audit" / "refusal_audit_ai_labels.csv"
+# Every labelled sample that is committed. Each has a labels file and the score JSON that
+# `quantgate audit score --json` wrote for it. The titles say what the sample is, not its numbers.
+AUDIT_SAMPLES: tuple[tuple[str, Path, Path], ...] = (
+    (
+        "Sample A: 40 prompts, labelled once per variant",
+        REPO / "results" / "audit" / "refusal_audit_score.json",
+        REPO / "audit" / "refusal_audit_ai_labels.csv",
+    ),
+    (
+        "Sample B: all 150 prompts, one variant",
+        REPO / "results" / "audit" / "refusal_audit_score_q5_k_m_150_prompts.json",
+        REPO / "audit" / "refusal_audit_ai_labels_q5_k_m_150_prompts.csv",
+    ),
+)
 
 BANNED = (
     "production-ready",
@@ -68,11 +80,13 @@ from quantgate.headline import (  # noqa: E402
     write_headline,
 )
 from quantgate.interpret import (  # noqa: E402
+    audit_coverage_text,
     audit_validation_block,
     interpretation_block,
     load_audit,
     privacy_problems,
 )
+from quantgate.models import load_registry  # noqa: E402
 from quantgate.report import (  # noqa: E402
     load_report,
     render_readme_block,
@@ -216,16 +230,37 @@ def render_interpretation_body(report: QuantReport | None, bandwidth: dict | Non
     return interpretation_block(report, bandwidth)
 
 
-def render_audit_body(audit: tuple[dict, list[dict[str, str]]] | None) -> str:
-    if audit is None:
+def load_all_audits() -> list[tuple[str, dict, list[dict[str, str]]]]:
+    """Every committed audit sample, as (title, score, labels). Samples whose files are absent are
+    left out, so a missing file is never filled in."""
+    found = []
+    for title, score_path, labels_path in AUDIT_SAMPLES:
+        loaded = load_audit(score_path, labels_path)
+        if loaded is not None:
+            score, labels = loaded
+            found.append((title, score, labels))
+    return found
+
+
+def all_variant_names() -> list[str]:
+    """The rungs of the ladder, from the variant registry."""
+    return [v.name for v in load_registry(config_path("variants.yaml")).variants]
+
+
+def render_audit_body(audits: list[tuple[str, dict, list[dict[str, str]]]] | None) -> str:
+    if not audits:
         return "_No refusal-classifier validation is committed yet._\n"
-    score, labels = audit
-    return audit_validation_block(score, labels)
+    parts = [audit_coverage_text(audits, all_variant_names())]
+    for title, score, labels in audits:
+        parts.append(audit_validation_block(score, labels, title))
+    return "\n".join(parts)
 
 
-def render_limitations(text: str, audit: tuple[dict, list[dict[str, str]]] | None) -> str:
-    """docs/limitations.md with the validation block replaced from the score JSON and labels."""
-    return _replace_between(text, LIMIT_AUDIT_START, LIMIT_AUDIT_END, render_audit_body(audit))
+def render_limitations(
+    text: str, audits: list[tuple[str, dict, list[dict[str, str]]]] | None
+) -> str:
+    """docs/limitations.md with the validation blocks replaced from the score JSON and labels."""
+    return _replace_between(text, LIMIT_AUDIT_START, LIMIT_AUDIT_END, render_audit_body(audits))
 
 
 def render_power(text: str) -> str:
@@ -248,7 +283,7 @@ def render_readme(
     text: str,
     report: QuantReport | None,
     bandwidth: dict | None = None,
-    audit: tuple[dict, list[dict[str, str]]] | None = None,
+    audit: list[tuple[str, dict, list[dict[str, str]]]] | None = None,
 ) -> str:
     """README text with every generated block replaced. Raises ValueError if a marker is absent."""
     results, laptop = render_blocks(report)
@@ -322,7 +357,7 @@ def main(argv: list[str] | None = None) -> int:
     report = load_report(REPORT) if REPORT.is_file() else None
     bandwidth = load_bandwidth(BANDWIDTH)
     expected = build_headline(report, bandwidth)
-    audit = load_audit(AUDIT_SCORE, AUDIT_LABELS)
+    audit = load_all_audits()
 
     if args.headline:
         return _write_or_check_headline(expected, check=False)
@@ -360,8 +395,6 @@ def main(argv: list[str] | None = None) -> int:
     committed = sorted(
         [
             *(REPO / "results").rglob("*.json"),
-            AUDIT_SCORE,
-            AUDIT_LABELS,
             *(REPO / "audit").glob("*.csv"),
         ]
     )

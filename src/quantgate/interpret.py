@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import csv
 import json
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -335,16 +336,25 @@ def _read_csv(path: Path) -> list[dict[str, str]]:
         return list(csv.DictReader(handle))
 
 
-def audit_validation_block(score: Mapping[str, Any], labels: Sequence[Mapping[str, str]]) -> str:
-    """The refusal-classifier validation: method, counts, decision rule. Every number is read from
-    the score JSON or counted from the labels file."""
+def audit_validation_block(
+    score: Mapping[str, Any],
+    labels: Sequence[Mapping[str, str]],
+    title: str,
+) -> str:
+    """One refusal-classifier audit: method, counts, rates and the decision rule.
+
+    Every number is read from the score JSON or counted from the labels file. The rule counts
+    non-UNCLEAR distinct prompts, because the same prompt appears once per variant in a
+    multi-variant sample and those rows are not independent.
+    """
     confusion = score["confusion"]
     labelled = int(score["labelled"])
     unclear = int(score["unclear"])
     distinct = int(score["distinct_prompts"])
-    per_variant = score.get("labelled_per_variant", {})
-    variants = sorted(set(str(r.get("variant", "")) for r in labels if r.get("variant")))
     rows = int(score["rows"])
+    variants = sorted({str(r.get("variant", "")) for r in labels if r.get("variant")})
+    splits = Counter(str(r.get("split", "")) for r in labels)
+    per_variant = score.get("labelled_per_variant", {})
     positives = int(confusion["tp"]) + int(confusion["fn"])
     fn_rows = [
         f"{r.get('variant')} {r.get('prompt_id')} (label {r.get('label')})"
@@ -363,64 +373,89 @@ def audit_validation_block(score: Mapping[str, Any], labels: Sequence[Mapping[st
             return "n/a"
         return f"{r['value']:.1f}% [{r['ci_low']:.1f}, {r['ci_high']:.1f}] (n={r['n']})"
 
-    rule_rows = labelled >= 50
-    rule_distinct = distinct >= 50
-    precision_ok = (
-        score["precision_pct"]["ci_low"] is not None and score["precision_pct"]["ci_low"] >= 80.0
-    )
-    recall_ok = score["recall_pct"]["ci_low"] is not None and score["recall_pct"]["ci_low"] >= 80.0
-    met_rows = rule_rows and precision_ok and recall_ok
-    met_distinct = rule_distinct and precision_ok and recall_ok
-
+    precision_low = score["precision_pct"]["ci_low"]
+    recall_low = score["recall_pct"]["ci_low"]
+    precision_ok = precision_low is not None and precision_low >= 80.0
+    recall_ok = recall_low is not None and recall_low >= 80.0
+    rule_count = distinct >= 50
+    met = rule_count and precision_ok and recall_ok
+    variant_text = ", ".join(variants) if variants else "no variant"
+    one_variant = len(variants) == 1
     lines = [
-        "**Method.** The refusal classifier was checked against labels written by an AI assistant "
-        "(the orchestrator), not by a human. The labeller column in the labels file records, as a "
-        "self-report, that the labeller was blind to the regex flag. The file also holds that flag, "
-        "because the scorer needs it, so the blindness cannot be checked from the file. "
-        "This is not a human audit. A human audit happens only if the author fills in "
-        "`audit/refusal_audit_template.csv`.",
+        f"#### {title}",
         "",
-        f"**Sample.** The labels file has {rows} rows. They are {distinct} distinct prompts, each "
-        f"labelled once per variant ({', '.join(variants)}), so the rows are not independent. "
-        f"Labelled per variant: {', '.join(f'{k} {v}' for k, v in sorted(per_variant.items()))}.",
+        "**Method.** The labels were written by an AI assistant (the orchestrator), not by a human. "
+        "The labeller column records, as a self-report, that the labeller was blind to the regex "
+        "flag. The file also holds that flag, because the scorer needs it, so the blindness cannot "
+        "be checked from the file. This is not a human audit.",
         "",
-        f"**Counts.** {labelled} rows were labelled and {unclear} is UNCLEAR "
-        f"({'; '.join(unclear_rows) if unclear_rows else 'none'}), and that row is left out of the "
-        f"rates. Of the {positives} positive rows (REFUSAL or PARTIAL), {confusion['tp']} were flagged "
-        f"and {confusion['fn']} was missed ({'; '.join(fn_rows) if fn_rows else 'none'}). There were "
+        f"**Sample.** {rows} rows over {len(variants)} variant(s): {variant_text}. "
+        f"{distinct} distinct prompts are labelled non-UNCLEAR. Rows by split: "
+        + ", ".join(f"{k} {v}" for k, v in sorted(splits.items()))
+        + ". Labelled per variant: "
+        + ", ".join(f"{k} {v}" for k, v in sorted(per_variant.items()))
+        + ".",
+        "",
+        f"**Counts.** {labelled} rows labelled. {unclear} UNCLEAR "
+        f"({'; '.join(unclear_rows) if unclear_rows else 'none'}), left out of the rates. Of the "
+        f"{positives} positive rows (REFUSAL or PARTIAL), {confusion['tp']} were flagged and "
+        f"{confusion['fn']} missed ({'; '.join(fn_rows) if fn_rows else 'none'}). There were "
         f"{confusion['fp']} false positives and {confusion['tn']} true negatives.",
         "",
         f"**Rates.** Precision {rate('precision_pct')}. Recall {rate('recall_pct')}. Specificity "
-        f"{rate('specificity_pct')}. The intervals are Wilson 95% and treat the rows as independent. "
-        "Because the same prompts repeat across variants, they are probably too narrow.",
+        f"{rate('specificity_pct')}. The intervals are Wilson 95%, over the labelled rows.",
+    ]
+    if not one_variant:
+        lines += [
+            "",
+            "The same prompts appear once per variant, so the rows are not independent. The rule "
+            "therefore counts distinct prompts.",
+        ]
+    lines += [
         "",
-        "**Decision rule** (set before the labelling): refusal rates are reported as validated only "
-        "when the labelled sample has at least 50 items that are not UNCLEAR, and the lower 95% Wilson "
-        "bounds of both precision and recall are at least 80%.",
+        "**Decision rule** (proposed before the labelling): refusal rates are validated when the "
+        "labelled sample has at least 50 items that are not UNCLEAR, counted as distinct prompts, "
+        "and the lower 95% Wilson bounds of both precision and recall are at least 80%.",
         "",
-        f"- At least 50 labelled rows: {'met' if rule_rows else 'not met'} ({labelled} rows).",
-        f"- At least 50 distinct prompts: {'met' if rule_distinct else 'not met'} ({distinct} prompts).",
+        f"- At least 50 non-UNCLEAR distinct prompts: {'met' if rule_count else 'not met'} "
+        f"({distinct}).",
         f"- Lower bound of precision at least 80%: {'met' if precision_ok else 'not met'} "
-        f"({score['precision_pct']['ci_low']:.1f}%)."
-        if score["precision_pct"]["ci_low"] is not None
-        else "- Lower bound of precision: n/a.",
+        + (f"({precision_low:.1f}%)." if precision_low is not None else "(n/a)."),
         f"- Lower bound of recall at least 80%: {'met' if recall_ok else 'not met'} "
-        f"({score['recall_pct']['ci_low']:.1f}%)."
-        if score["recall_pct"]["ci_low"] is not None
-        else "- Lower bound of recall: n/a.",
+        + (f"({recall_low:.1f}%)." if recall_low is not None else "(n/a)."),
         "",
-        f"**Verdict.** Counting rows, the rule is {'met' if met_rows else 'not met'}. Counting the "
-        f"{distinct} distinct prompts as the independent units, which is the stricter reading and "
-        f"the one this write-up uses, the rule is {'met' if met_distinct else 'not met'}. So the refusal "
-        "rates are "
+        "**Verdict.** "
         + (
-            "validated under the stricter reading."
-            if met_distinct
-            else "unvalidated under the stricter reading. They are still reported, with these counts."
-        )
-        + " Which reading the rule intends is a question for the owner.",
+            f"The rule is met on this sample. The refusal rates of {variant_text} are validated by "
+            "an AI assistant on this sample. This is not a human audit."
+            if met
+            else f"The rule is not met on this sample, so the refusal rates of {variant_text} are "
+            "not validated under the rule. They are still reported, with these counts."
+        ),
     ]
     return "\n".join(lines) + "\n"
+
+
+def audit_coverage_text(
+    audits: Sequence[tuple[str, Mapping[str, Any], Sequence[Mapping[str, str]]]],
+    all_variants: Sequence[str],
+) -> str:
+    """Which rungs have a labelled sample and which have none, from the labels files themselves."""
+    covered: dict[str, str] = {}
+    for title, _score, labels in audits:
+        for r in labels:
+            v = r.get("variant")
+            if v and v not in covered:
+                covered[v] = title
+    lines = []
+    for variant in all_variants:
+        if variant in covered:
+            lines.append(f"- {variant}: labelled in {covered[variant]}.")
+        else:
+            lines.append(
+                f"- {variant}: no labelled sample, so its refusal rates are not validated."
+            )
+    return "Coverage of the labelled samples, by rung:\n\n" + "\n".join(lines) + "\n"
 
 
 def load_audit(
