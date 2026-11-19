@@ -684,14 +684,14 @@ def _perf_phase(
 def _assemble(
     registry: Registry,
     paths: dict[str, Path],
-    suites: list[str],
     out: Path,
     pinned: dict[str, Variant] | None = None,
 ) -> list[VariantResult]:
-    """Build one VariantResult per variant with any finished suite file, and write variant.json.
+    """Build one VariantResult per variant from every suite file on disk, and write variant.json.
 
-    pinned maps variant names to registry entries with lock values filled in; those are used
-    in place of the registry entries.
+    The merge reads all suites in SUITE_NAMES, whatever suites this invocation ran, so the report
+    is the same however the runs were split (review bug: a perf-only run had dropped the quality
+    metrics). pinned maps variant names to registry entries with lock values filled in.
     """
     results: list[VariantResult] = []
     for registry_variant in registry.variants:
@@ -700,7 +700,7 @@ def _assemble(
         item_ids: dict[str, list[str]] = {}
         per_item: dict[str, list[int]] = {}
         found = False
-        for s in suites:
+        for s in SUITE_NAMES:
             path = out / v.name / f"{s}.json"
             if not path.is_file():
                 continue
@@ -863,19 +863,12 @@ def eval_cmd(
         if "perf" in suites:
             _perf_phase(variants, paths, cfg, out, ran, skipped, n_scale)
 
-        results = _assemble(registry, paths, suites, out, pinned={v.name: v for v in variants})
-        decisions = evaluate(results, registry.reference, gate_policy)
-        recommended = recommend(decisions, results)
-        report = build_report(
-            model_family=registry.family,
-            reference=registry.reference,
-            results=results,
-            decisions=decisions,
-            recommended=recommended,
-            env_info=env_info,
+        report = _aggregate_report(
+            out, registry, gate_policy, env_info, paths, {v.name: v for v in variants}
         )
         report_path = out / "report.json"
-        write_report(report, report_path)
+        results = report.variants
+        recommended = report.recommended
         payload = {
             "ok": True,
             "report": _portable(report_path),
@@ -926,6 +919,30 @@ def _run_history(env_path: Path, env_info: dict[str, Any], run_now: dict[str, An
         "variants": run_now["variants"],
     }
     return [*prior, entry]
+
+
+def _aggregate_report(
+    out: Path,
+    registry: Registry,
+    gate_policy: GatePolicy,
+    env_info: dict[str, Any],
+    paths: dict[str, Path],
+    pinned: dict[str, Variant],
+) -> QuantReport:
+    """Merge every suite file in out into report.json, with the gate decisions, and write it."""
+    results = _assemble(registry, paths, out, pinned=pinned)
+    decisions = evaluate(results, registry.reference, gate_policy)
+    recommended = recommend(decisions, results)
+    report = build_report(
+        model_family=registry.family,
+        reference=registry.reference,
+        results=results,
+        decisions=decisions,
+        recommended=recommended,
+        env_info=env_info,
+    )
+    write_report(report, out / "report.json")
+    return report
 
 
 def _report_path(path: Path) -> Path:
@@ -1082,10 +1099,42 @@ def report(
         Path | None,
         typer.Option("--readme", help="Also splice the results block into this README."),
     ] = None,
+    rebuild: Annotated[
+        bool,
+        typer.Option(
+            "--rebuild",
+            help="Rebuild report.json from every per-variant suite file first (no model run).",
+        ),
+    ] = False,
+    config: Annotated[
+        Path | None, typer.Option("--config", "-c", help="Variant registry YAML (with --rebuild).")
+    ] = None,
+    policy: Annotated[
+        Path | None, typer.Option("--policy", "-p", help="Gate policy YAML (with --rebuild).")
+    ] = None,
     json_out: JsonOption = False,
 ) -> None:
     """Render Markdown tables, Pareto plots and the static site from committed results."""
     with _guard(json_out):
+        if rebuild:
+            if not results.is_dir():
+                raise CliError("--rebuild needs the results directory")
+            registry_path = _registry_arg(config)
+            registry = load_registry(registry_path)
+            lock_entries = read_lock(_lock_default(registry_path))
+            pinned = {v.name: apply_lock(v, lock_entries) for v in registry.variants}
+            env_path = results / "env.json"
+            env_info: dict[str, Any] = (
+                json.loads(env_path.read_text(encoding="utf-8")) if env_path.is_file() else {}
+            )
+            _aggregate_report(
+                results,
+                registry,
+                load_policy(_policy_arg(policy)),
+                env_info,
+                {},
+                pinned,
+            )
         report_path = _report_path(results)
         rep = load_report(report_path)
         from quantgate.plots import write_report_plots  # matplotlib is an extra

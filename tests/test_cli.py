@@ -735,3 +735,104 @@ def test_gsm8k_counts_truncated_generations() -> None:
     result = score_gsm8k(finished, [(question, answer)], max_tokens=64, seed=0)
     assert result.n_truncated == 0
     assert result.correct == [True]
+
+
+def _stub_perf(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Perf with fixed metrics, no subprocess and no power probe (regression helper)."""
+    from quantgate import cli as cli_module
+
+    def fake_perf(model_path: Path, cfg: object, timeout_s: float = 0.0) -> dict[str, float]:
+        return {
+            "decode_tok_s_p50": 30.0,
+            "decode_tok_s_min": 29.0,
+            "decode_tok_s_max": 31.0,
+            "prefill_tok_s_p50": 150.0,
+            "peak_rss_bytes": 600.0 * 2**20,
+        }
+
+    monkeypatch.setattr(cli_module, "run_perf_subprocess", fake_perf)
+    monkeypatch.setattr(
+        cli_module,
+        "power_state",
+        lambda: {"pmset_batt": "", "pmset_therm": ""},
+    )
+
+
+def _metric_names(out: Path) -> dict[str, set[str]]:
+    report = load_report(out / "report.json")
+    return {vr.variant.name: set(vr.metrics) for vr in report.variants}
+
+
+def test_perf_only_invocation_keeps_every_quality_metric(
+    fake_eval: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression: the second invocation (perf only) used to rebuild report.json from perf alone,
+    so every quality metric read as missing and the gate failed closed."""
+    _stub_perf(monkeypatch)
+    quality = _invoke(*_eval_args(fake_eval, "--suite", "kl,arc,gsm8k,refusal", "--json"))
+    assert quality.exit_code == 0, quality.output
+    perf = _invoke(*_eval_args(fake_eval, "--suite", "perf", "--json"))
+    assert perf.exit_code == 0, perf.output
+
+    names = _metric_names(fake_eval["out"])
+    for variant in ("fp16", "q4_k_m"):
+        assert {"kl_mean", "arc_acc", "gsm8k_acc", "refusal_rate"} <= names[variant], variant
+        assert {"decode_tok_s", "prefill_tok_s", "peak_rss_mb"} <= names[variant], variant
+    report = load_report(fake_eval["out"] / "report.json")
+    assert not any("[missing]" in rule for d in report.decisions for rule in d.failed_rules), (
+        "a perf-only run must not make quality metrics missing"
+    )
+
+
+def test_report_is_the_same_whichever_order_the_suites_ran(
+    fake_eval: dict[str, Path], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Order independence: perf first, then quality, gives the same merged metrics."""
+    _stub_perf(monkeypatch)
+    first_out = fake_eval["out"]
+    assert (
+        _invoke(*_eval_args(fake_eval, "--suite", "kl,arc,gsm8k,refusal", "--json")).exit_code == 0
+    )
+    assert _invoke(*_eval_args(fake_eval, "--suite", "perf", "--json")).exit_code == 0
+    quality_then_perf = _metric_names(first_out)
+
+    other = tmp_path / "other"
+    other_args = _eval_args(fake_eval, "--suite", "perf", "--json")
+    other_args[other_args.index(str(first_out))] = str(other)
+    assert _invoke(*other_args).exit_code == 0
+    other_args = _eval_args(fake_eval, "--suite", "kl,arc,gsm8k,refusal", "--json")
+    other_args[other_args.index(str(first_out))] = str(other)
+    assert _invoke(*other_args).exit_code == 0
+    perf_then_quality = _metric_names(other)
+    assert quality_then_perf == perf_then_quality
+
+
+def test_report_rebuild_regenerates_report_from_disk(
+    fake_eval: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _stub_perf(monkeypatch)
+    assert (
+        _invoke(*_eval_args(fake_eval, "--suite", "kl,arc,gsm8k,refusal", "--json")).exit_code == 0
+    )
+    assert _invoke(*_eval_args(fake_eval, "--suite", "perf", "--json")).exit_code == 0
+    report_file = fake_eval["out"] / "report.json"
+    report_file.write_text("{}", encoding="utf-8")  # a damaged report
+    result = _invoke(
+        "report",
+        str(fake_eval["out"]),
+        "--rebuild",
+        "-c",
+        str(fake_eval["config"]),
+        "-p",
+        str(POLICY),
+        "--out-dir",
+        str(tmp_path_for(fake_eval) / "site"),
+        "--json",
+    )
+    assert result.exit_code == 0, result.output
+    names = _metric_names(fake_eval["out"])
+    assert "arc_acc" in names["q4_k_m"] and "decode_tok_s" in names["q4_k_m"]
+
+
+def tmp_path_for(fake: dict[str, Path]) -> Path:
+    return fake["out"].parent
