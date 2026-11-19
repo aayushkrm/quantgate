@@ -32,6 +32,7 @@ TAGLINE = (
 QUICKSTART = "uv tool install git+https://github.com/aayushkrm/quantgate && quantgate demo"
 MIB = 2**20
 GB = 1e9
+GIB = 2**30
 
 
 class HeadlineItem(BaseModel):
@@ -41,8 +42,15 @@ class HeadlineItem(BaseModel):
     label: str
     value: str
     detail: str
-    n: int | None
-    ci: str | None
+    n: int | None = Field(
+        description="What n counts is stated in detail: repeats, passages, items or candidates."
+    )
+    ci: str | None = Field(
+        description=(
+            "A 95% confidence interval for rates and KL. For decode speed it is the min to max "
+            "over the repeats, which is not a confidence interval; the text says so."
+        )
+    )
     synthetic: bool
     featured: bool
     source: str
@@ -94,7 +102,7 @@ def _environment(report: QuantReport) -> str:
         parts.append(f"{cores} physical cores")
     ram = env.get("ram_bytes")
     if isinstance(ram, int | float) and ram > 0:
-        parts.append(f"{ram / GB:.0f} GB RAM")
+        parts.append(f"{ram / GIB:.0f} GiB RAM")
     parts.append("CPU only")
     text = ", ".join(parts) if parts else "Environment record not committed; CPU only"
     if env.get("synthetic") is True:
@@ -127,14 +135,16 @@ def _recommended_item(report: QuantReport) -> HeadlineItem:
     parts = []
     parts.append("file size not recorded" if size_mb is None else f"{size_mb:.0f} MiB file")
     if decode is not None:
-        parts.append(f"{decode.value:.1f} tok/s decode (p50), CPU only")
+        parts.append(f"{decode.value:.1f} tok/s decode (p50), CPU only; n = repeats")
     else:
         parts.append("decode speed not measured")
     ci = None
     if decode is not None:
-        ci = _ci_text(decode.ci_low, decode.ci_high, 1)
-        if ci is not None:
-            ci += " min-max over repeats"
+        if decode.ci_low is not None and decode.ci_high is not None:
+            ci = (
+                f"min {decode.ci_low:.1f} to max {decode.ci_high:.1f} over {decode.n} repeats; "
+                "not a confidence interval"
+            )
     return HeadlineItem(
         id="recommended",
         label="Recommended quant (smallest that passes every rule)",
@@ -164,6 +174,7 @@ def _hidden_item(report: QuantReport) -> HeadlineItem:
     else:
         value = f"0 of {total} candidates"
         detail = "Null result: no hidden-danger row under this policy."
+    detail += " n = candidate variants."
     if not_evaluated:
         detail += f" Not evaluated for: {', '.join(not_evaluated)} (missing metrics)."
     return HeadlineItem(
@@ -195,7 +206,10 @@ def _worst_kl_item(report: QuantReport) -> HeadlineItem | None:
         id="worst_kl",
         label="Largest KL drift from fp16 across the ladder",
         value=f"{mv.value:.4f} nats/token ({vr.variant.name})",
-        detail="Mean KL(fp16 || candidate) over scored positions; larger is further from fp16.",
+        detail=(
+            "Mean KL(fp16 || candidate) over scored positions; larger is further from fp16. "
+            "n = passages."
+        ),
         n=mv.n,
         ci=_ci_text(mv.ci_low, mv.ci_high, 4),
         synthetic=report.env_info.get("synthetic") is True,
@@ -232,7 +246,10 @@ def _worst_arc_item(report: QuantReport) -> HeadlineItem | None:
         id="worst_arc_drop",
         label="Largest ARC-Easy drop from fp16 across the ladder",
         value=f"{drop:.1f} points ({vr.variant.name})",
-        detail="Reference minus candidate, in percentage points. Negative means no drop.",
+        detail=(
+            "Reference minus candidate, in percentage points. Negative means no drop. "
+            "n = ARC-Easy items."
+        ),
         n=vr.metrics["arc_acc"].n,
         ci=ci,
         synthetic=report.env_info.get("synthetic") is True,
@@ -260,7 +277,10 @@ def _q2_item(report: QuantReport) -> HeadlineItem | None:
         id="q2_k_vs_fp16",
         label="Lowest rung (q2_k) against fp16",
         value=f"ARC-Easy {arc_q2.value:.1f}% vs {arc_ref.value:.1f}% (fp16)",
-        detail="; ".join(details) if details else "Only ARC-Easy recorded for this rung.",
+        detail=(
+            ("; ".join(details) if details else "Only ARC-Easy recorded for this rung.")
+            + " n = ARC-Easy items."
+        ),
         n=arc_q2.n,
         ci=_ci_text(arc_q2.ci_low, arc_q2.ci_high, 1),
         synthetic=report.env_info.get("synthetic") is True,

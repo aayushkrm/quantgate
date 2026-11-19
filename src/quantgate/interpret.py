@@ -57,6 +57,39 @@ def _overlap(
     return a_low <= b_high and b_low <= a_high  # type: ignore[operator]
 
 
+def provenance_section(report: QuantReport) -> list[str]:
+    """What the environment record says about where these results came from, stated plainly."""
+    env = report.env_info
+    history = env.get("run_history") or []
+    lines = []
+    for entry in history:
+        sha = str(entry.get("git_sha") or "unknown")[:7]
+        suites = ", ".join(entry.get("suites") or [])
+        lines.append(f"- Invocation at commit {sha} ({entry.get('utc_time')}), suites: {suites}.")
+    if not lines:
+        lines.append("No invocation history is recorded in the environment record.")
+    dirty = env.get("git_dirty")
+    if dirty is True:
+        state = (
+            "The latest invocation was run from a working tree with uncommitted changes "
+            "(`git_dirty` is true). The record keeps that flag for the latest invocation only, "
+            "so the state of the earlier quality invocation is not recorded."
+        )
+    elif dirty is False:
+        state = "The latest invocation was run from a clean working tree."
+    else:
+        state = "The record does not say whether the working tree was clean."
+    lines += [
+        "",
+        state,
+        "The environment record has no diff-digest field, so there is no digest of the uncommitted "
+        "changes for these runs. Later commits changed the report aggregation and the audit scorer "
+        "after the quality run (deviation 16); the report was regenerated from the per-variant "
+        "files, which is a regeneration, not a re-run.",
+    ]
+    return lines
+
+
 def ladder_section(report: QuantReport) -> list[str]:
     """Quality table with 95% intervals and n, straight from the report."""
     return [
@@ -211,12 +244,20 @@ def bandwidth_section(
         return lines[:1] + [
             "No variant has both a decode rate and a file size, so the check is empty."
         ]
+    lines += [
+        "",
+        "Method note. The STREAM-style copy and scale kernels count read and write traffic, so their "
+        "figures are total traffic. A decode pass reads the weights and writes little, so the implied "
+        "figure is a read-mostly estimate. This check does not model the two differently. The measured "
+        "ceiling is one run of 5 repeats, with the best kept. It is not a peak specification.",
+    ]
     if over:
         lines += [
             "",
             f"{len(over)} of {checked} variants ({', '.join(over)}) show a ratio above 1.0. The decode "
             "figure implies more bandwidth than the copy measurement. The protocol (DECISION section "
-            "6) says such a run is repeated before it is reported. This is flagged, not repaired.",
+            "6) says such a run is repeated before it is reported. The cause is not established by "
+            "this check, so the ratio is flagged and not explained.",
         ]
     else:
         lines += ["", f"All {checked} variants sit within the measured ceiling."]
@@ -262,6 +303,7 @@ def interpretation_block(report: QuantReport, bandwidth: Mapping[str, Any] | Non
     if report.env_info.get("synthetic") is True:
         out += ["> **SYNTHETIC.** Not a measurement.", ""]
     sections: list[tuple[str, list[str]]] = [
+        ("Provenance", provenance_section(report)),
         ("Ladder", ladder_section(report)),
         ("Gate verdicts", gate_section(report)),
         ("Hidden-danger result", hidden_danger_section(report)),
@@ -332,8 +374,9 @@ def audit_validation_block(score: Mapping[str, Any], labels: Sequence[Mapping[st
 
     lines = [
         "**Method.** The refusal classifier was checked against labels written by an AI assistant "
-        "(the orchestrator), not by a human. The labeller column in the labels file records that it "
-        "was blind to the regex flag. The file also holds that flag, because the scorer needs it. "
+        "(the orchestrator), not by a human. The labeller column in the labels file records, as a "
+        "self-report, that the labeller was blind to the regex flag. The file also holds that flag, "
+        "because the scorer needs it, so the blindness cannot be checked from the file. "
         "This is not a human audit. A human audit happens only if the author fills in "
         "`audit/refusal_audit_template.csv`.",
         "",

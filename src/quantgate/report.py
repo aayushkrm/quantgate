@@ -401,11 +401,15 @@ def render_readme_block(report: QuantReport, env_link: str = "results/env.json")
                 _cell("top1_agree", m.get("top1_agree")),
                 _cell("arc_acc", m.get("arc_acc")),
                 _cell("refusal_rate", m.get("refusal_rate")),
-                _cell("decode_tok_s", m.get("decode_tok_s")),
+                _range_cell("decode_tok_s", m.get("decode_tok_s")),
             ]
         )
     lines += _markdown_table(compact)
-    lines += ["", f"Environment record: [env.json]({env_link}). Brackets hold 95% CIs."]
+    lines += [
+        "",
+        f"Environment record: [env.json]({env_link}). Brackets hold 95% intervals for rates and "
+        "KL. For decode speed they hold the min and max over the repeats, not an interval.",
+    ]
     return "\n".join(lines) + "\n"
 
 

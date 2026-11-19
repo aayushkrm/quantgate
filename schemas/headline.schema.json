@@ -12,6 +12,7 @@
               "type": "null"
             }
           ],
+          "description": "A 95% confidence interval for rates and KL. For decode speed it is the min to max over the repeats, which is not a confidence interval; the text says so.",
           "title": "Ci"
         },
         "detail": {
@@ -39,6 +40,7 @@
               "type": "null"
             }
           ],
+          "description": "What n counts is stated in detail: repeats, passages, items or candidates.",
           "title": "N"
         },
         "source": {

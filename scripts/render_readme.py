@@ -107,6 +107,18 @@ def _metric_text(report: QuantReport, variant: str, metric: str, decimals: int =
     return f"{text} (n={mv.n})"
 
 
+def _range_text(report: QuantReport, variant: str, metric: str, decimals: int = 1) -> str:
+    """A metric of one variant as its value and its min-max over repeats. Not an interval."""
+    vr = next((v for v in report.variants if v.variant.name == variant), None)
+    mv = None if vr is None else vr.metrics.get(metric)
+    if mv is None:
+        return "n/a"
+    text = _fmt(mv.value, decimals)
+    if mv.ci_low is not None and mv.ci_high is not None:
+        text += f" (min {_fmt(mv.ci_low, decimals)}, max {_fmt(mv.ci_high, decimals)})"
+    return f"{text} over {mv.n} repeats"
+
+
 def laptop_answer(report: QuantReport | None) -> str:
     """The answer for an old Intel laptop, built from the report only.
 
@@ -134,7 +146,9 @@ def laptop_answer(report: QuantReport | None) -> str:
         f"every rule and is not a hidden-danger row ({size_text})."
     )
     lines.append("")
-    lines.append(f"- Decode: {_metric_text(report, rec, 'decode_tok_s')} tok/s")
+    lines.append(
+        f"- Decode: {_range_text(report, rec, 'decode_tok_s')} tok/s (min to max over repeats)"
+    )
     lines.append(f"- KL vs fp16: {_metric_text(report, rec, 'kl_mean', 4)} nats/token")
     lines.append(f"- ARC-Easy: {_metric_text(report, rec, 'arc_acc')} %")
     lines.append(f"- Refusal, harmful: {_metric_text(report, rec, 'refusal_rate')} %")

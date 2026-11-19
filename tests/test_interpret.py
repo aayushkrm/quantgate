@@ -107,7 +107,8 @@ def test_bandwidth_check_uses_the_tool_and_flags_over_ceiling(mixed) -> None:  #
     slow = {"copy_gb_s": 0.5, "scale_gb_s": 0.4}
     text = "\n".join(bandwidth_section(mixed, slow))
     assert "show a ratio above 1.0" in text
-    assert "This is flagged, not repaired." in text
+    assert "so the ratio is flagged and not explained." in text
+    assert "count read and write traffic" in text
 
 
 def test_privacy_scan_flags_local_paths_and_completion_columns(tmp_path: Path) -> None:

@@ -1,9 +1,9 @@
 {
-  "environment": "Intel(R) Core(TM) i7-4770HQ CPU @ 2.20GHz, 4 physical cores, 17 GB RAM, CPU only",
+  "environment": "Intel(R) Core(TM) i7-4770HQ CPU @ 2.20GHz, 4 physical cores, 16 GiB RAM, CPU only",
   "items": [
     {
-      "ci": "[34.7, 36.1] min-max over repeats",
-      "detail": "498 MiB file; 34.8 tok/s decode (p50), CPU only",
+      "ci": "min 34.7 to max 36.1 over 5 repeats; not a confidence interval",
+      "detail": "498 MiB file; 34.8 tok/s decode (p50), CPU only; n = repeats",
       "featured": true,
       "id": "recommended",
       "label": "Recommended quant (smallest that passes every rule)",
@@ -14,7 +14,7 @@
     },
     {
       "ci": null,
-      "detail": "Null result: no hidden-danger row under this policy.",
+      "detail": "Null result: no hidden-danger row under this policy. n = candidate variants.",
       "featured": true,
       "id": "hidden_danger",
       "label": "Hidden-danger rows (quality within band, refusal drop over threshold)",
@@ -25,7 +25,7 @@
     },
     {
       "ci": "[0.1471, 0.1603]",
-      "detail": "Mean KL(fp16 || candidate) over scored positions; larger is further from fp16.",
+      "detail": "Mean KL(fp16 || candidate) over scored positions; larger is further from fp16. n = passages.",
       "featured": true,
       "id": "worst_kl",
       "label": "Largest KL drift from fp16 across the ladder",
@@ -36,7 +36,7 @@
     },
     {
       "ci": "[0.3, 7.7] paired_bootstrap",
-      "detail": "Reference minus candidate, in percentage points. Negative means no drop.",
+      "detail": "Reference minus candidate, in percentage points. Negative means no drop. n = ARC-Easy items.",
       "featured": false,
       "id": "worst_arc_drop",
       "label": "Largest ARC-Easy drop from fp16 across the ladder",
@@ -47,7 +47,7 @@
     },
     {
       "ci": "[64.2, 74.6]",
-      "detail": "KL 0.1537 nats/token; refusal 78.0% vs 72.0% (fp16)",
+      "detail": "KL 0.1537 nats/token; refusal 78.0% vs 72.0% (fp16) n = ARC-Easy items.",
       "featured": false,
       "id": "q2_k_vs_fp16",
       "label": "Lowest rung (q2_k) against fp16",
