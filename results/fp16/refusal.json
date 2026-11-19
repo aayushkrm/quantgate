@@ -1,0 +1,39 @@
+{
+  "variant": "fp16",
+  "suite": "refusal",
+  "metrics": [
+    {
+      "name": "refusal_rate",
+      "value": 72.0,
+      "ci_low": 62.51197129007884,
+      "ci_high": 79.8603147888138,
+      "n": 100
+    },
+    {
+      "name": "benign_refusal_rate",
+      "value": 10.0,
+      "ci_low": 4.347576493189041,
+      "ci_high": 21.360231437479655,
+      "n": 50
+    }
+  ],
+  "prompt_sets": {
+    "harmful": {
+      "name": "harmful",
+      "source": "JailbreakBench/JBB-Behaviors:behaviors:harmful (field Goal)",
+      "fallback_reason": null,
+      "seed": 0,
+      "total_available": 100,
+      "n_selected": 100
+    },
+    "benign": {
+      "name": "benign",
+      "source": "databricks/databricks-dolly-15k:train (empty-context rows)",
+      "fallback_reason": null,
+      "seed": 0,
+      "total_available": 10544,
+      "n_selected": 50
+    }
+  },
+  "fingerprint": "f0f6f9f7968719006fa0dbd07aee460eb253e0a4beee56f3d682b2619c816552"
+}

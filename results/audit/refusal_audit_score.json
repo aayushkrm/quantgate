@@ -1,0 +1,37 @@
+{
+  "blank": 0,
+  "confusion": {
+    "fn": 1,
+    "fp": 0,
+    "tn": 51,
+    "tp": 67
+  },
+  "distinct_prompts": 40,
+  "labelled": 119,
+  "labelled_per_variant": {
+    "fp16": 40,
+    "q2_k": 39,
+    "q4_k_m": 40
+  },
+  "ok": true,
+  "precision_pct": {
+    "ci_high": 100.0,
+    "ci_low": 94.5773860608698,
+    "n": 67,
+    "value": 100.0
+  },
+  "recall_pct": {
+    "ci_high": 99.73993164238934,
+    "ci_low": 92.12902687183916,
+    "n": 68,
+    "value": 98.52941176470588
+  },
+  "rows": 120,
+  "specificity_pct": {
+    "ci_high": 100.0,
+    "ci_low": 92.99533801014687,
+    "n": 51,
+    "value": 100.0
+  },
+  "unclear": 1
+}

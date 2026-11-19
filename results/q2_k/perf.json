@@ -1,0 +1,53 @@
+{
+  "variant": "q2_k",
+  "suite": "perf",
+  "metrics": [
+    {
+      "name": "decode_tok_s",
+      "value": 31.254873974986477,
+      "ci_low": 30.58390737750352,
+      "ci_high": 31.34428716523809,
+      "n": 5
+    },
+    {
+      "name": "prefill_tok_s",
+      "value": 189.00663802916623,
+      "ci_low": null,
+      "ci_high": null,
+      "n": 5
+    },
+    {
+      "name": "peak_rss_mb",
+      "value": 694.99609375,
+      "ci_low": null,
+      "ci_high": null,
+      "n": 5
+    },
+    {
+      "name": "file_mb",
+      "value": 395.9490661621094,
+      "ci_low": null,
+      "ci_high": null,
+      "n": 1
+    }
+  ],
+  "fingerprint": "7f995b63196952b31f2a952d0fa2dc3a5030ef5fa2f4c3de2d63798acefa4336",
+  "power_before": {
+    "pmset_available": true,
+    "power_source": "AC Power",
+    "battery_percent": 73,
+    "thermal_warning_recorded": false,
+    "performance_warning_recorded": false,
+    "cpu_speed_limit": 82,
+    "cpu_scheduler_limit": 100
+  },
+  "power_after": {
+    "pmset_available": true,
+    "power_source": "AC Power",
+    "battery_percent": 73,
+    "thermal_warning_recorded": false,
+    "performance_warning_recorded": false,
+    "cpu_speed_limit": 82,
+    "cpu_scheduler_limit": 100
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "variant": "fp16",
+  "suite": "kl",
+  "metrics": [
+    {
+      "name": "kl_mean",
+      "value": 0.0,
+      "ci_low": 0.0,
+      "ci_high": 0.0,
+      "n": 50
+    },
+    {
+      "name": "top1_agree",
+      "value": 100.0,
+      "ci_low": 100.0,
+      "ci_high": 100.0,
+      "n": 50
+    },
+    {
+      "name": "ppl",
+      "value": 23.660758522483324,
+      "ci_low": 20.97438032733925,
+      "ci_high": 26.922045312293896,
+      "n": 50
+    }
+  ],
+  "fingerprint": "6912dde07782314a92a5a02e41af712fd57b4484b47d9ff2de6e1eff8f8ed710"
+}

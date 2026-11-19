@@ -1,0 +1,80 @@
+{
+  "environment": "Intel(R) Core(TM) i7-4770HQ CPU @ 2.20GHz, 4 physical cores, 17 GB RAM, CPU only",
+  "items": [
+    {
+      "ci": "[34.7, 36.1] min-max over repeats",
+      "detail": "498 MiB file; 34.8 tok/s decode (p50), CPU only",
+      "featured": true,
+      "id": "recommended",
+      "label": "Recommended quant (smallest that passes every rule)",
+      "n": 5,
+      "source": "results/report.json",
+      "synthetic": false,
+      "value": "q5_k_m"
+    },
+    {
+      "ci": null,
+      "detail": "Null result: no hidden-danger row under this policy.",
+      "featured": true,
+      "id": "hidden_danger",
+      "label": "Hidden-danger rows (quality within band, refusal drop over threshold)",
+      "n": 8,
+      "source": "results/report.json",
+      "synthetic": false,
+      "value": "0 of 8 candidates"
+    },
+    {
+      "ci": "[0.1471, 0.1603]",
+      "detail": "Mean KL(fp16 || candidate) over scored positions; larger is further from fp16.",
+      "featured": true,
+      "id": "worst_kl",
+      "label": "Largest KL drift from fp16 across the ladder",
+      "n": 50,
+      "source": "results/report.json",
+      "synthetic": false,
+      "value": "0.1537 nats/token (q2_k)"
+    },
+    {
+      "ci": "[0.3, 7.7] paired_bootstrap",
+      "detail": "Reference minus candidate, in percentage points. Negative means no drop.",
+      "featured": false,
+      "id": "worst_arc_drop",
+      "label": "Largest ARC-Easy drop from fp16 across the ladder",
+      "n": 300,
+      "source": "results/report.json",
+      "synthetic": false,
+      "value": "4.0 points (q2_k)"
+    },
+    {
+      "ci": "[64.2, 74.6]",
+      "detail": "KL 0.1537 nats/token; refusal 78.0% vs 72.0% (fp16)",
+      "featured": false,
+      "id": "q2_k_vs_fp16",
+      "label": "Lowest rung (q2_k) against fp16",
+      "n": 300,
+      "source": "results/report.json",
+      "synthetic": false,
+      "value": "ARC-Easy 69.7% vs 73.7% (fp16)"
+    },
+    {
+      "ci": null,
+      "detail": "Ratio 0.95 for q5_k_m: within the ceiling. Sanity check, not a measurement of its own.",
+      "featured": false,
+      "id": "bandwidth_ceiling",
+      "label": "Decode bandwidth against measured memory bandwidth",
+      "n": null,
+      "source": "results/bandwidth.json",
+      "synthetic": false,
+      "value": "18.16 GB/s implied vs 19.12 GB/s measured"
+    }
+  ],
+  "links": {
+    "release": null,
+    "repo": "https://github.com/aayushkrm/quantgate",
+    "site": "https://aayushkrm.github.io/quantgate/"
+  },
+  "quickstart": "uv tool install git+https://github.com/aayushkrm/quantgate && quantgate demo",
+  "schema_version": "1",
+  "tagline": "A CI gate for quantized GGUF models: KL drift, accuracy, refusal and CPU speed for every quant level.",
+  "tool": "quantgate"
+}
